@@ -148,7 +148,7 @@ Open **Admin → Plugins → Egg Browser → Settings**, or set environment vari
 | `EGG_BROWSER_PREFER_PELICAN_JSON` | `true` | Prefer non-`pterodactyl-*` egg files |
 | `EGG_BROWSER_SET_UPDATE_URL` | `true` | Write raw GitHub URL into egg `meta.update_url` |
 | `EGG_BROWSER_SCHEDULE_ENABLED` | `true` | Enable cron-based update checks |
-| `EGG_BROWSER_SCHEDULE_CRON` | `0 */6 * * *` | Scheduler expression |
+| `EGG_BROWSER_SCHEDULE_CRON` | `0 3 * * *` | Scheduler expression (default: daily 03:00) |
 | `EGG_BROWSER_INDEX_TTL` | `3600` | Repo tree cache seconds |
 | `EGG_BROWSER_MANIFEST_TTL` | `1800` | Egg JSON cache seconds |
 | `EGG_BROWSER_HTTP_TIMEOUT` | `20` | HTTP timeout seconds |

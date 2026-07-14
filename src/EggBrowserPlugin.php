@@ -111,7 +111,7 @@ class EggBrowserPlugin implements HasPluginSettings, Plugin
             TextInput::make('schedule_cron')
                 ->label(trans('egg-browser::strings.settings.schedule_cron'))
                 ->helperText(trans('egg-browser::strings.settings.schedule_cron_help'))
-                ->default(fn () => config('egg-browser.schedule.cron', '0 */6 * * *')),
+                ->default(fn () => config('egg-browser.schedule.cron', '0 3 * * *')),
 
             TextInput::make('index_ttl')
                 ->label(trans('egg-browser::strings.settings.index_ttl'))
@@ -141,7 +141,7 @@ class EggBrowserPlugin implements HasPluginSettings, Plugin
             'EGG_BROWSER_PREFER_PELICAN_JSON' => !empty($data['prefer_pelican_json']) ? 'true' : 'false',
             'EGG_BROWSER_SET_UPDATE_URL' => !empty($data['set_update_url']) ? 'true' : 'false',
             'EGG_BROWSER_SCHEDULE_ENABLED' => !empty($data['schedule_enabled']) ? 'true' : 'false',
-            'EGG_BROWSER_SCHEDULE_CRON' => $data['schedule_cron'] ?? '0 */6 * * *',
+            'EGG_BROWSER_SCHEDULE_CRON' => $data['schedule_cron'] ?? '0 3 * * *',
             'EGG_BROWSER_INDEX_TTL' => (string) ($data['index_ttl'] ?? 3600),
             'EGG_BROWSER_MANIFEST_TTL' => (string) ($data['manifest_ttl'] ?? 1800),
             'EGG_BROWSER_EXTRA_REPOSITORIES' => $this->repositoriesToEnvCsv((string) ($data['repositories'] ?? '')),

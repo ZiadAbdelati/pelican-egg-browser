@@ -278,10 +278,17 @@ class EggBrowserDetailPage extends Page
                     $rows = $diffHelper->unifiedLines($this->localPrettyJson, $this->upstreamPrettyJson);
                     $this->unifiedDiffRows = array_map(static function (array $row): array {
                         $tag = $row['tag'] ?? 'equal';
+                        $text = (string) ($row['text'] ?? '');
+                        $prefix = match ($tag) {
+                            'add' => '+ ',
+                            'remove' => '- ',
+                            default => '  ',
+                        };
 
                         return [
                             'tag' => $tag,
-                            'text' => (string) ($row['text'] ?? ''),
+                            'text' => $text,
+                            'line' => $prefix . $text,
                             'class' => match ($tag) {
                                 'add' => 'bg-emerald-950/60 text-emerald-200',
                                 'remove' => 'bg-rose-950/60 text-rose-200',
@@ -317,6 +324,17 @@ class EggBrowserDetailPage extends Page
     public function statusEnum(): EggInstallStatus
     {
         return EggInstallStatus::tryFrom($this->statusValue) ?? EggInstallStatus::UnknownUnlinked;
+    }
+
+    public function statusBadgeClass(): string
+    {
+        return match ($this->statusEnum()->color()) {
+            'success' => 'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-success-100 text-success-700 dark:bg-success-900 dark:text-success-300',
+            'warning' => 'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-warning-100 text-warning-700 dark:bg-warning-900 dark:text-warning-300',
+            'danger' => 'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-danger-100 text-danger-700 dark:bg-danger-900 dark:text-danger-300',
+            'info' => 'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-info-100 text-info-700 dark:bg-info-900 dark:text-info-300',
+            default => 'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+        };
     }
 
     /**

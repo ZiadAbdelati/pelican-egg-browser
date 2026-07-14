@@ -23,17 +23,9 @@
                     </div>
                 </div>
 
-                @php($status = $this->statusEnum())
                 <div class="flex flex-col items-end gap-1">
-                    <span @class([
-                        'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium',
-                        'bg-success-100 text-success-700 dark:bg-success-900 dark:text-success-300' => $status->color() === 'success',
-                        'bg-warning-100 text-warning-700 dark:bg-warning-900 dark:text-warning-300' => $status->color() === 'warning',
-                        'bg-danger-100 text-danger-700 dark:bg-danger-900 dark:text-danger-300' => $status->color() === 'danger',
-                        'bg-info-100 text-info-700 dark:bg-info-900 dark:text-info-300' => $status->color() === 'info',
-                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' => $status->color() === 'gray',
-                    ])>
-                        {{ $status->displayName() }}
+                    <span class="{{ $this->statusBadgeClass() }}">
+                        {{ $this->statusEnum()->displayName() }}
                     </span>
                     @if ($hasLocalChanges)
                         <span class="text-xs text-info-600 dark:text-info-300">
@@ -200,18 +192,7 @@
                         </div>
                         <div class="max-h-[32rem] overflow-auto rounded-lg bg-gray-950 p-3 font-mono text-xs leading-5">
                             @foreach ($unifiedDiffRows as $row)
-                                @php
-                                    $prefix = match ($row['tag'] ?? 'equal') {
-                                        'add' => '+ ',
-                                        'remove' => '- ',
-                                        default => '  ',
-                                    };
-                                    $line = $prefix . ($row['text'] ?? '');
-                                @endphp
-                                <div @class([
-                                    'block whitespace-pre-wrap break-all',
-                                    $row['class'] ?? 'text-gray-300',
-                                ])>{{ $line === '' ? ' ' : $line }}</div>
+                                <div class="block whitespace-pre-wrap break-all {{ $row['class'] ?? 'text-gray-300' }}">{{ ($row['line'] ?? $row['text'] ?? '') === '' ? ' ' : ($row['line'] ?? $row['text']) }}</div>
                             @endforeach
                         </div>
                     @elseif ($localPrettyJson !== '' && $upstreamPrettyJson !== '')

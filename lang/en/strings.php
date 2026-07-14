@@ -114,7 +114,7 @@ return [
         'set_update_url_help' => 'Lets the panel native egg updater also see the upstream file.',
         'schedule_enabled' => 'Enable scheduled update checks',
         'schedule_cron' => 'Schedule cron expression',
-        'schedule_cron_help' => 'Default: every 6 hours (0 */6 * * *). Requires panel scheduler/cron. When enabled, tracked eggs are checked and repository indexes are refreshed before each run.',
+        'schedule_cron_help' => 'Default: once per day at 03:00 (0 3 * * *). Requires panel scheduler/cron. When enabled, tracked eggs are checked and repository indexes are refreshed before each run.',
         'index_ttl' => 'Repository index cache TTL (seconds)',
         'manifest_ttl' => 'Egg manifest cache TTL (seconds)',
         'saved' => 'Egg Browser settings saved',

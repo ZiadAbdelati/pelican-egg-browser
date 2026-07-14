@@ -72,7 +72,7 @@ class EggBrowserPluginProvider extends ServiceProvider
                 return;
             }
 
-            $cron = (string) config('egg-browser.schedule.cron', '0 */6 * * *');
+            $cron = (string) config('egg-browser.schedule.cron', '0 3 * * *');
 
             $schedule->job(new CheckAllTrackedEggsJob(
                 refreshIndex: (bool) config('egg-browser.schedule.refresh_index_before_check', true),

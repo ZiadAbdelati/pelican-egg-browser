@@ -43,8 +43,8 @@ return [
     */
     'schedule' => [
         'enabled' => (bool) env('EGG_BROWSER_SCHEDULE_ENABLED', true),
-        // Cron expression evaluated by the panel scheduler (default: every 6 hours).
-        'cron' => env('EGG_BROWSER_SCHEDULE_CRON', '0 */6 * * *'),
+        // Cron expression evaluated by the panel scheduler (default: daily at 03:00).
+        'cron' => env('EGG_BROWSER_SCHEDULE_CRON', '0 3 * * *'),
         'refresh_index_before_check' => (bool) env('EGG_BROWSER_REFRESH_INDEX_BEFORE_CHECK', true),
     ],
 

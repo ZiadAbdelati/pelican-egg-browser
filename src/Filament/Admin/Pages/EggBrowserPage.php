@@ -26,6 +26,8 @@ class EggBrowserPage extends Page
     protected static ?string $slug = 'egg-browser';
 
     protected static ?int $navigationSort = 2;
+    protected static ?string $navigationParentItem = \App\Filament\Admin\Resources\Eggs\EggResource::class;
+
 
     protected string $view = 'egg-browser::filament.egg-browser';
 
@@ -87,8 +89,8 @@ class EggBrowserPage extends Page
 
     public static function getNavigationGroup(): ?string
     {
-        // Same group as stock Eggs resource.
-        return trans('admin/dashboard.server');
+        // Must match the stock Eggs resource group when it is rendered in sidebar mode.
+        return \App\Filament\Admin\Resources\Eggs\EggResource::getNavigationGroup();
     }
 
     public static function canAccess(): bool

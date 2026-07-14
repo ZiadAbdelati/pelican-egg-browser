@@ -337,8 +337,8 @@ class EggNormalizer
     }
 
     /**
-     * Panel exports rewrite {{server.build.env.X}} to {{server.environment.X}}.
-     * Treat them as equivalent for status fingerprints/diffs.
+     * Match Pelican importer upgrades from EggImporterService::UPGRADE_VARIABLES.
+     * Treat importer-rewritten variables as equivalent for status fingerprints/diffs.
      *
      * @param  mixed  $value
      * @return mixed
@@ -347,7 +347,7 @@ class EggNormalizer
     {
         if (is_string($value)) {
             $value = str_replace('{{server.build.env.', '{{server.environment.', $value);
-            $value = str_replace('{{server.build.', '{{server.environment.', $value);
+            $value = str_replace('{{server.build.environment.', '{{server.environment.', $value);
 
             return $value;
         }

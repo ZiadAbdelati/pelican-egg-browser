@@ -1,12 +1,12 @@
 <x-filament-panels::page>
-    <div class="fi-section rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
-        {{-- Tab bar --}}
-        <div class="border-b border-gray-200 px-4 pt-3 dark:border-white/10 sm:px-6">
-            <div class="flex flex-wrap gap-1">
+    <div class="rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+        {{-- Settings-style tab bar --}}
+        <div class="border-b border-gray-200 p-3 dark:border-white/10">
+            <div class="flex flex-wrap gap-2">
                 <button
                     type="button"
                     wire:click="setActiveTab('browser')"
-                    class="inline-flex items-center gap-x-2 rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition {{ $activeTab === 'browser' ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200' }}"
+                    class="inline-flex items-center gap-x-2 rounded-lg px-3 py-2 text-sm font-medium transition {{ $activeTab === 'browser' ? 'bg-gray-100 text-primary-600 dark:bg-white/5 dark:text-primary-400' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200' }}"
                 >
                     <x-filament::icon icon="tabler-world-search" class="h-4 w-4" />
                     {{ __('egg-browser::strings.tabs.browser') }}
@@ -15,7 +15,7 @@
                 <button
                     type="button"
                     wire:click="setActiveTab('manage')"
-                    class="inline-flex items-center gap-x-2 rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition {{ $activeTab === 'manage' ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200' }}"
+                    class="inline-flex items-center gap-x-2 rounded-lg px-3 py-2 text-sm font-medium transition {{ $activeTab === 'manage' ? 'bg-gray-100 text-primary-600 dark:bg-white/5 dark:text-primary-400' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200' }}"
                 >
                     <x-filament::icon icon="tabler-packages" class="h-4 w-4" />
                     {{ __('egg-browser::strings.tabs.manage') }}

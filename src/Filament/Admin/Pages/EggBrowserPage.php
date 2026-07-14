@@ -125,6 +125,10 @@ class EggBrowserPage extends Page
                 }),
             Action::make('linkLocal')
                 ->label((string) __('egg-browser::strings.browser.link_local'))
+                ->icon('tabler-link')
+                ->color('primary')
+                ->requiresConfirmation()
+                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
                 ->action(function (): void {
                     try {
                         $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);

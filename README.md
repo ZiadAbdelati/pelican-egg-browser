@@ -99,6 +99,19 @@ The plugin registers admin permissions under `egg_browser`:
 
 Root admins always have access. Grant the custom permissions on roles as needed.
 
+### Linking existing panel eggs safely
+
+`Link installed eggs` auto-links only a proven source identity: matching upstream UUID or an `update_url` that identifies the exact GitHub file. Name and slug matches are intentionally **not** linked automatically; they can point to different eggs with similar names.
+
+If an earlier Egg Browser version created guessed links, remove only invalid **tracking rows** (never local panel eggs):
+
+```bash
+php artisan egg-browser:repair-tracking --dry-run
+php artisan egg-browser:repair-tracking
+```
+
+After repair, run `php artisan egg-browser:link-local` again. Eggs without a verifiable source remain `Unknown/unlinked` instead of being falsely marked as having an update.
+
 ---
 
 ## Configuration

@@ -2,12 +2,14 @@
 
 namespace Community\EggBrowser\Providers;
 
+use App\Models\Egg;
 use App\Models\Role;
 use Community\EggBrowser\Console\Commands\CheckEggUpdatesCommand;
 use Community\EggBrowser\Console\Commands\LinkLocalEggsCommand;
 use Community\EggBrowser\Console\Commands\RefreshEggIndexCommand;
 use Community\EggBrowser\Console\Commands\RepairTrackedEggsCommand;
 use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
+use Community\EggBrowser\Observers\EggObserver;
 use Community\EggBrowser\Services\EggIndexService;
 use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggManifestService;
@@ -16,6 +18,7 @@ use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Community\EggBrowser\Services\RepositoryConfigService;
 use Community\EggBrowser\Services\TrackedEggRepairService;
+use Community\EggBrowser\Services\TrackedEggSyncService;
 use Community\EggBrowser\Support\EggNormalizer;
 use Community\EggBrowser\Support\EggPathMatcher;
 use Illuminate\Console\Scheduling\Schedule;
@@ -45,10 +48,13 @@ class EggBrowserPluginProvider extends ServiceProvider
         $this->app->singleton(EggStatusService::class);
         $this->app->singleton(EggInstallService::class);
         $this->app->singleton(TrackedEggRepairService::class);
+        $this->app->singleton(TrackedEggSyncService::class);
     }
 
     public function boot(): void
     {
+        Egg::observe(EggObserver::class);
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 RefreshEggIndexCommand::class,

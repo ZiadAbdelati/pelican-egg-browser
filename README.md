@@ -127,6 +127,12 @@ php artisan egg-browser:link-local
 
 Eggs without a usable `update_url` stay untracked until you set one or install them from the browser.
 
+### Tracking stays in sync automatically
+
+- Importing/creating a panel egg with a GitHub `update_url` auto-creates a tracking row.
+- Deleting a panel egg removes its tracking row.
+- Opening **Installed Eggs** also prunes orphan tracking rows (safety net).
+
 ---
 
 ## Configuration

@@ -7,6 +7,7 @@ use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Jobs\CheckTrackedEggJob;
 use Community\EggBrowser\Models\TrackedEgg;
 use Community\EggBrowser\Services\EggInstallService;
+use Community\EggBrowser\Services\TrackedEggSyncService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -23,6 +24,12 @@ class TrackedEggsPage extends Page
     protected static ?int $navigationSort = 4;
 
     protected string $view = 'egg-browser::filament.tracked-eggs';
+
+    public function mount(): void
+    {
+        // Keep list honest even if an egg was deleted outside the observer path.
+        app(TrackedEggSyncService::class)->pruneOrphans();
+    }
 
     public function getTitle(): string
     {
@@ -57,8 +64,10 @@ class TrackedEggsPage extends Page
                 ->icon('tabler-link')
                 ->color('primary')
                 ->requiresConfirmation()
+                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
                 ->action(function (): void {
                     try {
+                        app(TrackedEggSyncService::class)->pruneOrphans();
                         $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
 
                         $body = (string) __('egg-browser::strings.notifications.link_stats', [
@@ -139,7 +148,9 @@ class TrackedEggsPage extends Page
 
     public function detailUrl(TrackedEgg $tracked): string
     {
-        return EggBrowserDetailPage::getUrl(['key' => $tracked->sourceKey()]);
+        $encoded = rtrim(strtr(base64_encode($tracked->sourceKey()), '+/', '-_'), '=');
+
+        return EggBrowserDetailPage::getUrl(['key' => $encoded]);
     }
 
     public function statusColor(string $status): string

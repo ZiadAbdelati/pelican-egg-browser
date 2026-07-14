@@ -43,7 +43,7 @@ class EggBrowserPage extends Page
     public ?string $statusFilter = null;
 
     #[Url]
-    public int $page = 1;
+    public int $catalogPage = 1;
 
     public int $perPage = 24;
 
@@ -148,8 +148,9 @@ class EggBrowserPage extends Page
         $enriched = $eggs->map(function (array $egg) use ($statusService) {
             // Cheap status: use tracked rows without re-fetching every upstream on list view.
             $result = $statusService->resolveCatalogEgg($egg, fetchUpstream: false);
-            $egg['install_status'] = $result['status'];
-            $egg['tracked'] = $result['tracked'];
+            $egg['install_status'] = $result['status'] instanceof EggInstallStatus
+                ? $result['status']->value
+                : (string) ($result['status'] ?? EggInstallStatus::NotInstalled->value);
             $egg['local_egg_id'] = $result['local_egg']?->id;
 
             return $egg;
@@ -157,7 +158,7 @@ class EggBrowserPage extends Page
 
         if ($this->statusFilter) {
             $enriched = $enriched->filter(
-                fn (array $egg) => ($egg['install_status']?->value ?? '') === $this->statusFilter
+                fn (array $egg) => ($egg['install_status'] ?? '') === $this->statusFilter
             )->values();
         }
 
@@ -169,7 +170,7 @@ class EggBrowserPage extends Page
      */
     public function getPaginatedEggsProperty(): Collection
     {
-        $offset = max(0, ($this->page - 1) * $this->perPage);
+        $offset = max(0, ($this->catalogPage - 1) * $this->perPage);
 
         return $this->eggs->slice($offset, $this->perPage)->values();
     }
@@ -217,27 +218,27 @@ class EggBrowserPage extends Page
 
     public function updatedQ(): void
     {
-        $this->page = 1;
+        $this->catalogPage = 1;
     }
 
     public function updatedRepository(): void
     {
-        $this->page = 1;
+        $this->catalogPage = 1;
     }
 
     public function updatedCategory(): void
     {
-        $this->page = 1;
+        $this->catalogPage = 1;
     }
 
     public function updatedStatusFilter(): void
     {
-        $this->page = 1;
+        $this->catalogPage = 1;
     }
 
     public function gotoPage(int $page): void
     {
-        $this->page = max(1, min($page, $this->totalPages));
+        $this->catalogPage = max(1, min($page, $this->totalPages));
     }
 
     public function detailUrl(string $key): string

@@ -357,7 +357,7 @@ class EggMatcherService
         }
 
         // Catch query-string / refs/heads variants
-        if (preg_match('#github\.com/([^/]+)/([^/]+).+?/([^/?#]+\.json)#i', $url, $m)) {
+        if (preg_match('~github\.com/([^/]+)/([^/]+).+?/([^/?#]+\.json)~i', $url, $m)) {
             $keys[] = strtolower($m[1] . '/' . $m[2] . '/' . $m[3]);
         }
 

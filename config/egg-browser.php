@@ -180,14 +180,15 @@ return [
     */
     'discovery' => [
         // Prefer Pelican-native filenames over legacy pterodactyl-* copies.
+        // Official pelican-eggs repos now ship PLCN eggs as .yaml (and still keep some .json).
         'include_patterns' => [
-            '#(^|/)egg-[^/]+\.json$#i',
-            '#(^|/)pelican-egg-[^/]+\.json$#i',
-            '#(^|/)egg\.json$#i',
+            '#(^|/)egg-[^/]+\.(json|ya?ml)$#i',
+            '#(^|/)pelican-egg-[^/]+\.(json|ya?ml)$#i',
+            '#(^|/)egg\.(json|ya?ml)$#i',
         ],
         'exclude_patterns' => [
-            '#(^|/)egg-pterodactyl-[^/]+\.json$#i',
-            '#(^|/)pterodactyl-egg-[^/]+\.json$#i',
+            '#(^|/)egg-pterodactyl-[^/]+\.(json|ya?ml)$#i',
+            '#(^|/)pterodactyl-egg-[^/]+\.(json|ya?ml)$#i',
             '#(^|/)\.github/#',
         ],
     ],

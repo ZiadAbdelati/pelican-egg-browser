@@ -340,24 +340,34 @@ class EggMatcherService
 
         $keys = [];
 
-        if (preg_match('#raw\.githubusercontent\.com/([^/]+)/([^/]+)/[^/]+/(.+)$#i', $url, $m)) {
+        // raw.githubusercontent.com/owner/repo[/refs/heads|/refs/tags]/branch/path
+        if (preg_match(
+            '#raw\.githubusercontent\.com/([^/]+)/([^/]+)/(?:refs/(?:heads|tags)/)?([^/]+)/(.+)$#i',
+            $url,
+            $m
+        )) {
             $owner = strtolower($m[1]);
             $repo = strtolower($m[2]);
-            $path = strtolower(ltrim($m[3], '/'));
+            $path = strtolower(ltrim($m[4], '/'));
             $keys[] = $owner . '/' . $repo . '/' . $path;
             $keys[] = $owner . '/' . $repo . '/' . basename($path);
         }
 
-        if (preg_match('#github\.com/([^/]+)/([^/]+)/(?:blob|raw)/[^/]+/(.+)$#i', $url, $m)) {
+        // github.com/owner/repo/(blob|raw)[/refs/heads|/refs/tags]/branch/path
+        if (preg_match(
+            '#github\.com/([^/]+)/([^/]+)/(?:blob|raw)/(?:refs/(?:heads|tags)/)?([^/]+)/(.+)$#i',
+            $url,
+            $m
+        )) {
             $owner = strtolower($m[1]);
             $repo = strtolower($m[2]);
-            $path = strtolower(ltrim($m[3], '/'));
+            $path = strtolower(ltrim(preg_replace('/[?#].*$/', '', $m[4]) ?? $m[4], '/'));
             $keys[] = $owner . '/' . $repo . '/' . $path;
             $keys[] = $owner . '/' . $repo . '/' . basename($path);
         }
 
-        // Catch query-string / refs/heads variants
-        if (preg_match('~github\.com/([^/]+)/([^/]+).+?/([^/?#]+\.json)~i', $url, $m)) {
+        // Fallback: any github URL ending with an egg file
+        if (preg_match('~github\.com/([^/]+)/([^/]+).+?/([^/?#]+\.(?:json|ya?ml))~i', $url, $m)) {
             $keys[] = strtolower($m[1] . '/' . $m[2] . '/' . $m[3]);
         }
 

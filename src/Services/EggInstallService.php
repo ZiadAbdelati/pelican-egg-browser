@@ -41,7 +41,8 @@ class EggInstallService
         );
 
         $parsed = $manifest['parsed'];
-        $content = $this->prepareImportContent($parsed, $catalogEgg);
+        $format = (($manifest['format'] ?? null) === 'yaml') ? EggFormat::YAML : EggFormat::JSON;
+        $content = $this->prepareImportContent($parsed, $catalogEgg, $format);
 
         $existing = null;
         if (!empty($parsed['uuid'])) {
@@ -62,8 +63,8 @@ class EggInstallService
             throw EggInstallException::alreadyInstalled($existing->name);
         }
 
-        return DB::transaction(function () use ($content, $existing, $catalogEgg, $parsed, $tags, $manifest) {
-            $egg = $this->importer->fromContent($content, EggFormat::JSON, $existing);
+        return DB::transaction(function () use ($content, $existing, $catalogEgg, $parsed, $tags, $format) {
+            $egg = $this->importer->fromContent($content, $format, $existing);
 
             $resolvedTags = $tags ?? $this->resolveTags($catalogEgg, $egg);
             if ($resolvedTags !== []) {
@@ -193,36 +194,69 @@ class EggInstallService
     {
         $this->matcher->forget();
 
-        // Ensure we have a fresh-enough index; do not force GitHub on every click.
-        $catalog = $this->index->allEggs(forceRefresh: false);
-        if ($catalog === []) {
-            $catalog = $this->index->allEggs(forceRefresh: true);
-        }
+        $localEggs = Egg::query()
+            ->select(['id', 'uuid', 'name', 'update_url', 'author', 'description'])
+            ->orderBy('id')
+            ->get();
 
-        $result = $this->matcher->matchCatalog($catalog);
-        $matches = $result['matches'];
-        $stats = $result['stats'];
+        $trackedEggIds = TrackedEgg::query()
+            ->whereNotNull('egg_id')
+            ->pluck('egg_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $trackedEggIds = array_fill_keys($trackedEggIds, true);
 
         $linked = 0;
         $checked = 0;
         $skipped = 0;
         $errors = [];
+        $matched = 0;
+        $localTotal = $localEggs->count();
+        $localUntracked = 0;
+        $withUpdateUrl = 0;
 
-        foreach ($matches as $match) {
-            /** @var \App\Models\Egg $egg */
-            $egg = $match['egg'];
-            $catalogEgg = $match['catalog'];
-
-            $existing = TrackedEgg::query()
-                ->where('source_owner', $catalogEgg['owner'] ?? '')
-                ->where('source_repo', $catalogEgg['repo'] ?? '')
-                ->where('source_path', $catalogEgg['path'] ?? '')
-                ->first();
-
-            if ($existing && (int) $existing->egg_id === (int) $egg->id) {
+        foreach ($localEggs as $egg) {
+            if (isset($trackedEggIds[(int) $egg->id])) {
                 $skipped++;
                 continue;
             }
+
+            $localUntracked++;
+            $updateUrl = trim((string) ($egg->update_url ?? ''));
+            if ($updateUrl === '') {
+                continue;
+            }
+            $withUpdateUrl++;
+
+            $parts = $this->manifests->parseGitHubUrl($updateUrl);
+            if ($parts === null) {
+                $errors[] = ($egg->name ?? "egg#{$egg->id}") . ": unsupported update_url ({$updateUrl})";
+                continue;
+            }
+
+            $catalogEgg = [
+                'owner' => $parts['owner'],
+                'repo' => $parts['repo'],
+                'path' => $parts['path'],
+                'branch' => $parts['branch'],
+                'raw_url' => $parts['raw_url'],
+                'html_url' => $parts['html_url'],
+                'key' => strtolower($parts['owner'] . '/' . $parts['repo'] . ':' . $parts['path']),
+                'name' => $egg->name,
+            ];
+
+            // Avoid double-tracking the same source for a different local egg.
+            $existingSource = TrackedEgg::query()
+                ->where('source_owner', $catalogEgg['owner'])
+                ->where('source_repo', $catalogEgg['repo'])
+                ->where('source_path', $catalogEgg['path'])
+                ->first();
+            if ($existingSource && (int) $existingSource->egg_id !== (int) $egg->id) {
+                $errors[] = ($egg->name ?? "egg#{$egg->id}") . ': source already linked to another egg (' . ($existingSource->egg_name ?: "#{$existingSource->egg_id}") . ')';
+                continue;
+            }
+
+            $matched++;
 
             try {
                 if ($checkUpstream) {
@@ -230,7 +264,6 @@ class EggInstallService
                         $this->linkExisting($egg, $catalogEgg);
                         $checked++;
                     } catch (\Throwable $e) {
-                        // Still create a lightweight link if upstream fetch fails.
                         $this->linkExistingLightweight($egg, $catalogEgg);
                         $errors[] = ($egg->name ?? 'egg') . ' linked without upstream check: ' . $e->getMessage();
                     }
@@ -245,12 +278,19 @@ class EggInstallService
 
         $this->matcher->forget();
 
-        if ($linked === 0 && $stats['local_untracked'] > 0 && $stats['catalog_total'] === 0) {
-            $errors[] = 'Catalog is empty. Refresh the egg index first.';
-        } elseif ($linked === 0 && $stats['local_untracked'] === 0 && $stats['local_total'] > 0) {
+        $stats = [
+            'local_total' => $localTotal,
+            'local_untracked' => $localUntracked,
+            'catalog_total' => $withUpdateUrl, // eggs with a usable update_url
+            'matched' => $matched,
+        ];
+
+        if ($linked === 0 && $localUntracked > 0 && $withUpdateUrl === 0) {
+            $errors[] = 'No untracked eggs have an update_url set. Set update_url on each egg to the raw GitHub .yaml/.json file, then link again.';
+        } elseif ($linked === 0 && $localUntracked === 0 && $localTotal > 0) {
             $errors[] = 'All local eggs are already tracked.';
-        } elseif ($linked === 0 && $stats['local_untracked'] > 0) {
-            $errors[] = "No confident matches for {$stats['local_untracked']} untracked local egg(s) against {$stats['catalog_total']} catalog egg(s). Names/slugs may differ; open an egg detail and install/link manually, or ensure update_url points at the GitHub raw JSON.";
+        } elseif ($linked === 0 && $withUpdateUrl > 0 && $matched === 0) {
+            $errors[] = 'Found update_url values, but none could be parsed as GitHub raw/blob URLs.';
         }
 
         return [
@@ -293,7 +333,7 @@ class EggInstallService
      * @param  array<array-key, mixed>  $parsed
      * @param  array<string, mixed>  $catalogEgg
      */
-    protected function prepareImportContent(array $parsed, array $catalogEgg): string
+    protected function prepareImportContent(array $parsed, array $catalogEgg, EggFormat $format = EggFormat::JSON): string
     {
         if ((bool) config('egg-browser.install.set_update_url', true)) {
             $rawUrl = $catalogEgg['raw_url']
@@ -307,6 +347,15 @@ class EggInstallService
 
             $parsed['meta'] = is_array($parsed['meta'] ?? null) ? $parsed['meta'] : [];
             $parsed['meta']['update_url'] = $rawUrl;
+        }
+
+        if ($format === EggFormat::YAML) {
+            return \Symfony\Component\Yaml\Yaml::dump(
+                $parsed,
+                8,
+                2,
+                \Symfony\Component\Yaml\Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK
+            );
         }
 
         return json_encode($parsed, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);

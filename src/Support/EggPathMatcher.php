@@ -48,13 +48,17 @@ class EggPathMatcher
                 $dir = '';
             }
 
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
             $candidates[] = [
                 'path' => $path,
                 'dir' => $dir,
                 'sha' => $node['sha'] ?? null,
                 'size' => $node['size'] ?? null,
                 'basename' => basename($path),
+                'extension' => $ext,
                 'is_legacy' => $this->isLegacyFilename($path),
+                'is_yaml' => in_array($ext, ['yaml', 'yml'], true),
             ];
         }
 
@@ -67,15 +71,7 @@ class EggPathMatcher
             }
 
             $existing = $byDir[$key];
-            if ($preferPelican && $existing['is_legacy'] && !$candidate['is_legacy']) {
-                $byDir[$key] = $candidate;
-            } elseif ($preferPelican && !$existing['is_legacy'] && $candidate['is_legacy']) {
-                // keep existing
-            } elseif (!$preferPelican && !$existing['is_legacy'] && $candidate['is_legacy']) {
-                $byDir[$key] = $candidate;
-            } elseif (strlen($candidate['basename']) < strlen($existing['basename'])) {
-                $byDir[$key] = $candidate;
-            }
+            $byDir[$key] = $this->preferCandidate($existing, $candidate, $preferPelican);
         }
 
         $eggs = [];
@@ -99,6 +95,7 @@ class EggPathMatcher
                 'description' => null,
                 'author' => null,
                 'uuid' => null,
+                'format' => $candidate['is_yaml'] ? 'yaml' : 'json',
                 'tags' => array_values(array_filter([
                     $category,
                     $folderCategory !== $category ? $folderCategory : null,
@@ -111,6 +108,43 @@ class EggPathMatcher
         }
 
         return array_values($eggs);
+    }
+
+    /**
+     * Prefer modern Pelican YAML over JSON, and non-pterodactyl filenames over legacy twins.
+     *
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $candidate
+     * @return array<string, mixed>
+     */
+    protected function preferCandidate(array $existing, array $candidate, bool $preferPelican): array
+    {
+        if ($preferPelican) {
+            if ($existing['is_legacy'] && !$candidate['is_legacy']) {
+                return $candidate;
+            }
+            if (!$existing['is_legacy'] && $candidate['is_legacy']) {
+                return $existing;
+            }
+        } else {
+            if (!$existing['is_legacy'] && $candidate['is_legacy']) {
+                return $candidate;
+            }
+        }
+
+        // Official repos are migrating to YAML / PLCN exports.
+        if (!empty($candidate['is_yaml']) && empty($existing['is_yaml'])) {
+            return $candidate;
+        }
+        if (empty($candidate['is_yaml']) && !empty($existing['is_yaml'])) {
+            return $existing;
+        }
+
+        if (strlen((string) $candidate['basename']) < strlen((string) $existing['basename'])) {
+            return $candidate;
+        }
+
+        return $existing;
     }
 
     /**
@@ -134,7 +168,8 @@ class EggPathMatcher
 
     protected function slugFromPath(string $path): string
     {
-        $base = basename($path, '.json');
+        $base = basename($path);
+        $base = preg_replace('/\.(json|ya?ml)$/i', '', $base) ?? $base;
         $base = preg_replace('/^(egg-|pelican-egg-|pterodactyl-egg-)/i', '', $base) ?? $base;
         $base = preg_replace('/^egg-pterodactyl-/i', '', $base) ?? $base;
 

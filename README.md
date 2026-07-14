@@ -101,7 +101,15 @@ Root admins always have access. Grant the custom permissions on roles as needed.
 
 ### Linking existing panel eggs safely
 
-`Link installed eggs` auto-links only a proven source identity: matching upstream UUID or an `update_url` that identifies the exact GitHub file. Name and slug matches are intentionally **not** linked automatically; they can point to different eggs with similar names.
+`Link installed eggs` uses each panel egg’s **`update_url`** (the same field the panel’s built-in egg updater uses). Supported forms:
+
+```text
+https://raw.githubusercontent.com/pelican-eggs/minecraft/refs/heads/main/java/paper/egg-paper.yaml
+https://raw.githubusercontent.com/pelican-eggs/minecraft/main/java/paper/egg-paper.yaml
+https://github.com/pelican-eggs/minecraft/blob/main/java/paper/egg-paper.yaml
+```
+
+Both `.yaml` and `.json` are supported. Name/slug guessing is **not** used for auto-link (it previously caused wrong source associations).
 
 If an earlier Egg Browser version created guessed links, remove only invalid **tracking rows** (never local panel eggs):
 
@@ -110,7 +118,14 @@ php artisan egg-browser:repair-tracking --dry-run
 php artisan egg-browser:repair-tracking
 ```
 
-After repair, run `php artisan egg-browser:link-local` again. Eggs without a verifiable source remain `Unknown/unlinked` instead of being falsely marked as having an update.
+Then run:
+
+```bash
+php artisan egg-browser:refresh-index
+php artisan egg-browser:link-local
+```
+
+Eggs without a usable `update_url` stay untracked until you set one or install them from the browser.
 
 ---
 

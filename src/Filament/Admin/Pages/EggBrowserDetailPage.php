@@ -285,15 +285,19 @@ class EggBrowserDetailPage extends Page
                             default => '  ',
                         };
 
+                        // Inline styles: plugin Blade classes are not always present in
+                        // the panel Tailwind build, so dynamic bg-* utilities may never apply.
+                        [$background, $color] = match ($tag) {
+                            'add' => ['rgba(6, 78, 59, 0.55)', '#a7f3d0'],
+                            'remove' => ['rgba(136, 19, 55, 0.55)', '#fecdd3'],
+                            default => ['transparent', '#d1d5db'],
+                        };
+
                         return [
                             'tag' => $tag,
                             'text' => $text,
                             'line' => $prefix . $text,
-                            'class' => match ($tag) {
-                                'add' => 'bg-emerald-950/60 text-emerald-200',
-                                'remove' => 'bg-rose-950/60 text-rose-200',
-                                default => 'text-gray-300',
-                            },
+                            'style' => "background-color: {$background}; color: {$color};",
                         ];
                     }, $rows);
                     $this->unifiedDiff = $diffHelper->unifiedText($this->localPrettyJson, $this->upstreamPrettyJson);

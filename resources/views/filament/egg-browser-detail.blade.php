@@ -192,7 +192,10 @@
                         </div>
                         <div class="max-h-[32rem] overflow-auto rounded-lg bg-gray-950 p-3 font-mono text-xs leading-5">
                             @foreach ($unifiedDiffRows as $row)
-                                <div class="block whitespace-pre-wrap break-all {{ $row['class'] ?? 'text-gray-300' }}">{{ ($row['line'] ?? $row['text'] ?? '') === '' ? ' ' : ($row['line'] ?? $row['text']) }}</div>
+                                <div
+                                    class="block whitespace-pre-wrap break-all px-1 py-0.5"
+                                    style="{{ $row['style'] ?? 'color: #d1d5db;' }}"
+                                >{{ ($row['line'] ?? '') === '' ? ' ' : $row['line'] }}</div>
                             @endforeach
                         </div>
                     @elseif ($localPrettyJson !== '' && $upstreamPrettyJson !== '')

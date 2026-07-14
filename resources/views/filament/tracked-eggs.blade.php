@@ -22,30 +22,28 @@
                     </thead>
                     <tbody class="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-gray-950">
                         @foreach ($this->tracked as $row)
-                            <tr wire:key="tracked-{{ $row->id }}">
+                            @php($detailUrl = $this->detailUrl($row))
+                            <tr wire:key="tracked-{{ $row->id }}" class="hover:bg-gray-50/70 dark:hover:bg-gray-900/40">
                                 <td class="px-4 py-3">
-                                    <div class="font-medium text-gray-900 dark:text-white">
-                                        {{ $row->egg_name ?? ('#' . $row->egg_id) }}
-                                    </div>
-                                    <div class="font-mono text-xs text-gray-400">{{ $row->egg_uuid }}</div>
+                                    <a href="{{ $detailUrl }}" class="group block">
+                                        <div class="font-medium text-primary-600 group-hover:underline dark:text-primary-400">
+                                            {{ $row->egg_name ?? ('#' . $row->egg_id) }}
+                                        </div>
+                                        <div class="font-mono text-xs text-gray-400">{{ $row->egg_uuid }}</div>
+                                    </a>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <div class="font-mono text-xs">
-                                        {{ $row->source_owner }}/{{ $row->source_repo }}
-                                    </div>
-                                    <div class="truncate font-mono text-[11px] text-gray-400" title="{{ $row->source_path }}">
-                                        {{ $row->source_path }}
-                                    </div>
+                                    <a href="{{ $detailUrl }}" class="block hover:opacity-80">
+                                        <div class="font-mono text-xs">
+                                            {{ $row->source_owner }}/{{ $row->source_repo }}
+                                        </div>
+                                        <div class="truncate font-mono text-[11px] text-gray-400" title="{{ $row->source_path }}">
+                                            {{ $row->source_path }}
+                                        </div>
+                                    </a>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span @class([
-                                        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-                                        'bg-success-100 text-success-700 dark:bg-success-900 dark:text-success-300' => $this->statusColor($row->status) === 'success',
-                                        'bg-warning-100 text-warning-700 dark:bg-warning-900 dark:text-warning-300' => $this->statusColor($row->status) === 'warning',
-                                        'bg-danger-100 text-danger-700 dark:bg-danger-900 dark:text-danger-300' => $this->statusColor($row->status) === 'danger',
-                                        'bg-info-100 text-info-700 dark:bg-info-900 dark:text-info-300' => $this->statusColor($row->status) === 'info',
-                                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' => $this->statusColor($row->status) === 'gray',
-                                    ])>
+                                    <span class="{{ $this->statusBadgeClass($row->status) }}">
                                         {{ $this->statusLabel($row->status) }}
                                     </span>
                                     @if ($row->last_error)
@@ -67,7 +65,7 @@
                                             {{ trans('egg-browser::strings.installed.check') }}
                                         </button>
                                         <a
-                                            href="{{ $this->detailUrl($row) }}"
+                                            href="{{ $detailUrl }}"
                                             class="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900"
                                         >
                                             {{ trans('egg-browser::strings.installed.open_detail') }}

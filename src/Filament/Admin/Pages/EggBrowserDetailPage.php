@@ -447,6 +447,14 @@ class EggBrowserDetailPage extends Page
             return $value ? 'true' : 'false';
         }
 
+        if (is_scalar($value)) {
+            $text = (string) $value;
+
+            return $text === '' ? '""' : $text;
+        }
+
+        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) ?: '[complex]';
+    }
 
     protected function normalizeDescription(mixed $value): ?string
     {
@@ -459,13 +467,5 @@ class EggBrowserDetailPage extends Page
         $text = preg_replace('/^[ \t]+/m', '', $text) ?? $text;
 
         return trim($text);
-    }
-        if (is_scalar($value)) {
-            $text = (string) $value;
-
-            return $text === '' ? '""' : $text;
-        }
-
-        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) ?: '[complex]';
     }
 }

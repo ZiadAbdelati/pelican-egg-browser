@@ -103,7 +103,7 @@ class EggBrowserPage extends Page
             Action::make('refreshIndex')
                 ->label((string) __('egg-browser::strings.browser.refresh_index'))
                 ->icon('tabler-refresh')
-                ->color('gray')
+                ->color('primary')
                 ->requiresConfirmation()
                 ->action(function (): void {
                     try {
@@ -165,43 +165,60 @@ class EggBrowserPage extends Page
                 ->label((string) __('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
                 ->action(function (): void {
-                    CheckAllTrackedEggsJob::dispatch(refreshIndex: false);
+                    try {
+                        // Sync so last_checked_at updates without requiring a queue worker.
+                        CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
+                        $this->reloadCatalog();
 
-                    Notification::make()
-                        ->title((string) __('egg-browser::strings.notifications.check_queued'))
-                        ->success()
-                        ->send();
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.check_done'))
+                            ->success()
+                            ->send();
+                    } catch (Throwable $e) {
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.error'))
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
                 }),
         ];
     }
 
-    public function updatedSearch(): void
+    public function updatedSearch($value = null): void
     {
-        $this->search = $this->scalarString($this->search);
+        $this->search = $this->scalarString($value ?? $this->search);
         $this->catalogPage = 1;
         $this->reloadCatalog();
     }
 
-    public function updatedFilterRepository(): void
+    public function updatedFilterRepository($value = null): void
     {
-        $this->filterRepository = $this->scalarString($this->filterRepository);
+        $this->filterRepository = $this->scalarString($value ?? $this->filterRepository);
         $this->catalogPage = 1;
         $this->reloadCatalog();
     }
 
-    public function updatedFilterCategory(): void
+    public function updatedFilterCategory($value = null): void
     {
-        $this->filterCategory = $this->scalarString($this->filterCategory);
+        $this->filterCategory = $this->scalarString($value ?? $this->filterCategory);
         $this->catalogPage = 1;
         $this->reloadCatalog();
     }
 
-    public function updatedFilterStatus(): void
+    public function updatedFilterStatus($value = null): void
     {
-        $this->filterStatus = $this->scalarString($this->filterStatus);
+        $this->filterStatus = $this->scalarString($value ?? $this->filterStatus);
         $this->catalogPage = 1;
         $this->reloadCatalog();
     }
+
+    public function gotoPage(int $page): void
+    {
+        $this->catalogPage = max(1, min($page, max(1, $this->eggTotalPages)));
+        $this->reloadCatalog();
+    }
+
     public function detailUrl(string $key): string
     {
         $encoded = rtrim(strtr(base64_encode($key), '+/', '-_'), '=');

@@ -18,7 +18,8 @@
                 </label>
                 <input
                     type="search"
-                    wire:model.live.debounce.400ms="search"
+                    wire:model.live.debounce.250ms="search"
+                    wire:keydown.enter.prevent
                     placeholder="{{ __('egg-browser::strings.browser.search_placeholder') }}"
                     class="fi-input block w-full rounded-lg border-none bg-white px-3 py-2 text-base text-gray-950 shadow-sm outline-none ring-1 ring-gray-950/10 transition duration-75 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-600 disabled:bg-gray-50 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] disabled:placeholder:[-webkit-text-fill-color:theme(colors.gray.400)] dark:bg-white/5 dark:text-white dark:ring-white/20 dark:placeholder:text-gray-500 dark:focus:ring-primary-500 dark:disabled:bg-transparent dark:disabled:text-gray-400 sm:text-sm sm:leading-6"
                 />

@@ -72,8 +72,14 @@ class EggInstallService
                 $egg->save();
             }
 
-            $fingerprint = $this->normalizer->fingerprint($parsed);
-            $snapshot = $this->normalizer->normalize($parsed);
+            $egg = $egg->refresh();
+
+            // Fingerprint the *live* panel export, not the raw upstream payload.
+            // Importer rewrites / tag merges otherwise look like instant local changes.
+            $localParsed = $this->status->exportLocalAsArray($egg);
+            $installedFingerprint = $this->normalizer->fingerprint($localParsed);
+            $installedSnapshot = $this->normalizer->normalize($localParsed);
+            $upstreamFingerprint = $this->normalizer->fingerprint($parsed);
 
             TrackedEgg::query()->updateOrCreate(
                 [
@@ -86,12 +92,14 @@ class EggInstallService
                     'source_branch' => $catalogEgg['branch'] ?? 'main',
                     'source_sha' => $catalogEgg['tree_sha'] ?? null,
                     'source_blob_sha' => $catalogEgg['blob_sha'] ?? null,
-                    'upstream_fingerprint' => $fingerprint,
-                    'installed_fingerprint' => $fingerprint,
-                    'installed_snapshot' => $snapshot,
+                    'upstream_fingerprint' => $upstreamFingerprint,
+                    'installed_fingerprint' => $installedFingerprint,
+                    'installed_snapshot' => $installedSnapshot,
                     'egg_uuid' => $egg->uuid,
                     'egg_name' => $egg->name,
-                    'status' => EggInstallStatus::UpToDate->value,
+                    'status' => hash_equals($installedFingerprint, $upstreamFingerprint)
+                        ? EggInstallStatus::UpToDate->value
+                        : EggInstallStatus::LocalChanges->value,
                     'last_error' => null,
                     'last_checked_at' => now(),
                     'last_installed_at' => now(),

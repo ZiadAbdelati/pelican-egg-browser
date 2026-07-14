@@ -101,11 +101,21 @@ class TrackedEggsPage extends Page
                 ->label((string) __('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
                 ->action(function (): void {
-                    CheckAllTrackedEggsJob::dispatch(refreshIndex: true);
-                    Notification::make()
-                        ->title((string) __('egg-browser::strings.notifications.check_queued'))
-                        ->success()
-                        ->send();
+                    try {
+                        app(TrackedEggSyncService::class)->pruneOrphans();
+                        CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
+
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.check_done'))
+                            ->success()
+                            ->send();
+                    } catch (Throwable $e) {
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.error'))
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
                 }),
             Action::make('browser')
                 ->label((string) __('egg-browser::strings.navigation.browser'))

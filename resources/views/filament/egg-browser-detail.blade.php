@@ -48,7 +48,7 @@
                     {{ __('egg-browser::strings.browser.description') }}
                 </h3>
                 <p class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                    {{ $catalogEgg['description'] ?: __('egg-browser::strings.browser.no_description') }}
+                    {{ filled($catalogEgg['description'] ?? null) ? $catalogEgg['description'] : __('egg-browser::strings.browser.no_description') }}
                 </p>
                 <div class="mt-3 font-mono text-xs text-gray-400">
                     <div>{{ __('egg-browser::strings.browser.path') }}: {{ $catalogEgg['path'] ?? '' }}</div>
@@ -188,13 +188,28 @@
                 </div>
             @endif
 
-            @if ($localPrettyJson !== '' || $upstreamPrettyJson !== '' || $rawJson)
+            @if ($unifiedDiff !== '' || $localPrettyJson !== '' || $upstreamPrettyJson !== '' || $rawJson)
                 <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                     <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                         {{ __('egg-browser::strings.browser.raw_compare') }}
                     </h3>
 
-                    @if ($localPrettyJson !== '' && $upstreamPrettyJson !== '')
+                    @if ($unifiedDiff !== '')
+                        <div class="mb-2 text-xs text-gray-500">
+                            {{ __('egg-browser::strings.browser.unified_diff_help') }}
+                        </div>
+                        <pre class="max-h-[32rem] overflow-auto rounded-lg bg-gray-950 p-3 font-mono text-xs leading-5 text-gray-100"><code>@foreach (preg_split("/\r\n|\n|\r/", $unifiedDiff) as $line)
+@php
+    $cls = 'text-gray-300';
+    if (str_starts_with($line, '+ ')) {
+        $cls = 'bg-emerald-950/60 text-emerald-200';
+    } elseif (str_starts_with($line, '- ')) {
+        $cls = 'bg-rose-950/60 text-rose-200';
+    }
+@endphp
+<span class="block whitespace-pre-wrap break-all {{ $cls }}">{{ $line === '' ? ' ' : $line }}</span>
+@endforeach</code></pre>
+                    @elseif ($localPrettyJson !== '' && $upstreamPrettyJson !== '')
                         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
                             <div>
                                 <div class="mb-1 text-xs font-medium text-gray-500">{{ __('egg-browser::strings.browser.diff_local') }}</div>
@@ -208,6 +223,9 @@
                     @elseif ($rawJson)
                         <div class="mb-1 text-xs font-medium text-gray-500">{{ __('egg-browser::strings.browser.raw_json') }}</div>
                         <pre class="max-h-96 overflow-auto rounded-lg bg-gray-950 p-3 text-xs text-gray-100">{{ $rawJson }}</pre>
+                    @elseif ($localPrettyJson !== '')
+                        <div class="mb-1 text-xs font-medium text-gray-500">{{ __('egg-browser::strings.browser.diff_local') }}</div>
+                        <pre class="max-h-96 overflow-auto rounded-lg bg-gray-950 p-3 text-xs text-gray-100">{{ $localPrettyJson }}</pre>
                     @endif
                 </div>
             @endif

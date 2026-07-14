@@ -56,6 +56,8 @@ class EggBrowserDetailPage extends Page
 
     public string $upstreamPrettyJson = '';
 
+    public string $unifiedDiff = '';
+
     public bool $hasLocalChanges = false;
 
     public bool $hasUpstreamDiff = false;
@@ -164,6 +166,7 @@ class EggBrowserDetailPage extends Page
         $this->diff = [];
         $this->localPrettyJson = '';
         $this->upstreamPrettyJson = '';
+        $this->unifiedDiff = '';
         $this->hasLocalChanges = false;
         $this->hasUpstreamDiff = false;
 
@@ -171,69 +174,125 @@ class EggBrowserDetailPage extends Page
         if (!$catalog) {
             // Allow deep-link even if index is stale: parse key owner/repo:path
             if (preg_match('#^([^/]+)/([^:]+):(.+)$#', $this->key, $m)) {
+                $path = $m[3];
                 $catalog = [
                     'key' => $this->key,
                     'owner' => $m[1],
                     'repo' => $m[2],
                     'repository' => $m[1] . '/' . $m[2],
-                    'path' => $m[3],
+                    'path' => $path,
                     'branch' => 'main',
-                    'name' => basename($m[3], '.json'),
-                    'slug' => basename($m[3], '.json'),
+                    'name' => basename(preg_replace('/\.(json|ya?ml)$/i', '', $path) ?? $path),
+                    'slug' => basename(preg_replace('/\.(json|ya?ml)$/i', '', $path) ?? $path),
                     'category' => $m[2],
-                    'html_url' => "https://github.com/{$m[1]}/{$m[2]}/blob/main/{$m[3]}",
-                    'raw_url' => "https://raw.githubusercontent.com/{$m[1]}/{$m[2]}/main/{$m[3]}",
+                    'description' => null,
+                    'author' => null,
+                    'uuid' => null,
+                    'html_url' => "https://github.com/{$m[1]}/{$m[2]}/blob/main/{$path}",
+                    'raw_url' => "https://raw.githubusercontent.com/{$m[1]}/{$m[2]}/main/{$path}",
                 ];
             } else {
                 $this->error = 'Egg not found in index: ' . $this->key;
+                $this->catalogEgg = null;
 
                 return;
             }
         }
 
-        $this->catalogEgg = $catalog;
+        // Guarantee scalar keys used by the Blade view.
+        $this->catalogEgg = array_merge([
+            'name' => null,
+            'slug' => null,
+            'repository' => null,
+            'category' => null,
+            'author' => null,
+            'description' => null,
+            'path' => null,
+            'blob_sha' => null,
+            'uuid' => null,
+            'html_url' => null,
+            'raw_url' => null,
+            'owner' => null,
+            'repo' => null,
+            'branch' => 'main',
+        ], $catalog);
+
         $statusService = app(EggStatusService::class);
         $normalizer = app(EggNormalizer::class);
 
         try {
             $manifest = app(EggManifestService::class)->fetch(
-                $catalog['owner'],
-                $catalog['repo'],
-                $catalog['path'],
-                $catalog['branch'] ?? 'main',
+                (string) $this->catalogEgg['owner'],
+                (string) $this->catalogEgg['repo'],
+                (string) $this->catalogEgg['path'],
+                (string) ($this->catalogEgg['branch'] ?? 'main'),
             );
             $this->manifest = $manifest['parsed'];
             $this->rawJson = $manifest['content'];
             $this->upstreamPrettyJson = $normalizer->pretty($this->manifest);
 
-            // Enrich display name/description from manifest
             $this->catalogEgg['name'] = $this->manifest['name'] ?? $this->catalogEgg['name'];
-            $this->catalogEgg['description'] = $this->manifest['description'] ?? null;
-            $this->catalogEgg['author'] = $this->manifest['author'] ?? null;
-            $this->catalogEgg['uuid'] = $this->manifest['uuid'] ?? null;
+            $this->catalogEgg['description'] = $this->normalizeDescription(
+                $this->manifest['description'] ?? $this->catalogEgg['description'] ?? null
+            );
+            $this->catalogEgg['author'] = $this->manifest['author'] ?? $this->catalogEgg['author'];
+            $this->catalogEgg['uuid'] = $this->manifest['uuid'] ?? $this->catalogEgg['uuid'];
         } catch (\Throwable $e) {
             $this->error = $e->getMessage();
+            $this->manifest = null;
+            $this->rawJson = null;
+            $this->upstreamPrettyJson = '';
+            // Keep page usable for 404 / moved sources using tracked/local data.
+            $this->catalogEgg['description'] = $this->normalizeDescription($this->catalogEgg['description'] ?? null);
         }
 
-        $result = $statusService->resolveCatalogEgg($this->catalogEgg, fetchUpstream: true);
-        $this->statusValue = $result['status']->value;
-        $this->localEggId = $result['local_egg']?->id;
-        $this->trackedId = $result['tracked']?->id;
+        try {
+            $result = $statusService->resolveCatalogEgg($this->catalogEgg, fetchUpstream: $this->error === null);
+            $this->statusValue = $result['status']->value;
+            $this->localEggId = $result['local_egg']?->id;
+            $this->trackedId = $result['tracked']?->id;
 
-        $upstreamParsed = $result['upstream_parsed'] ?? $this->manifest;
-        if ($result['local_egg'] && is_array($upstreamParsed)) {
-            $localParsed = $statusService->exportLocalAsArray($result['local_egg']);
-            $this->localPrettyJson = $normalizer->pretty($localParsed);
-            $this->diff = $normalizer->diffSections($localParsed, $upstreamParsed);
-            $this->hasUpstreamDiff = collect($this->diff)->contains(fn ($info) => !empty($info['changed']));
+            if ($this->error !== null && $result['status'] === EggInstallStatus::CheckFailed) {
+                // already failed
+            } elseif ($this->error !== null) {
+                $this->statusValue = EggInstallStatus::CheckFailed->value;
+            }
 
-            $installed = $result['installed_fingerprint'] ?? null;
-            $current = $result['current_fingerprint'] ?? null;
-            $this->hasLocalChanges = is_string($installed)
-                && is_string($current)
-                && !hash_equals($installed, $current);
+            $upstreamParsed = $result['upstream_parsed'] ?? $this->manifest;
+            if ($result['local_egg'] && is_array($upstreamParsed)) {
+                $localParsed = $statusService->exportLocalAsArray($result['local_egg']);
+                $this->localPrettyJson = $normalizer->pretty($localParsed);
+                $this->diff = $normalizer->diffSections($localParsed, $upstreamParsed);
+                $this->hasUpstreamDiff = collect($this->diff)->contains(fn ($info) => !empty($info['changed']));
+
+                if ($this->upstreamPrettyJson === '') {
+                    $this->upstreamPrettyJson = $normalizer->pretty($upstreamParsed);
+                }
+
+                if ($this->localPrettyJson !== '' && $this->upstreamPrettyJson !== '') {
+                    $this->unifiedDiff = app(\Community\EggBrowser\Support\TextDiff::class)
+                        ->unifiedText($this->localPrettyJson, $this->upstreamPrettyJson);
+                }
+
+                $installed = $result['installed_fingerprint'] ?? null;
+                $current = $result['current_fingerprint'] ?? null;
+                $this->hasLocalChanges = is_string($installed)
+                    && is_string($current)
+                    && !hash_equals($installed, $current);
+            } elseif ($result['local_egg']) {
+                // Upstream missing (404) but local exists — still show local export.
+                $localParsed = $statusService->exportLocalAsArray($result['local_egg']);
+                $this->localPrettyJson = $normalizer->pretty($localParsed);
+                if ($this->catalogEgg['description'] === null) {
+                    $this->catalogEgg['description'] = $this->normalizeDescription($localParsed['description'] ?? null);
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->error = $this->error ?: $e->getMessage();
+            $this->statusValue = EggInstallStatus::CheckFailed->value;
         }
 
+        $this->catalogEgg['description'] = $this->normalizeDescription($this->catalogEgg['description'] ?? null);
         $this->installTags = $this->defaultInstallTags();
     }
 
@@ -388,6 +447,19 @@ class EggBrowserDetailPage extends Page
             return $value ? 'true' : 'false';
         }
 
+
+    protected function normalizeDescription(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = str_replace(["\r\n", "\r"], "\n", (string) $value);
+        // Strip accidental leading indentation on the first line (common in YAML eggs).
+        $text = preg_replace('/^[ \t]+/m', '', $text) ?? $text;
+
+        return trim($text);
+    }
         if (is_scalar($value)) {
             $text = (string) $value;
 

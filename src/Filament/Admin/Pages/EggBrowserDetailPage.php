@@ -154,6 +154,10 @@ class EggBrowserDetailPage extends Page
     {
         $this->error = null;
         $this->diff = [];
+        $this->localPrettyJson = '';
+        $this->upstreamPrettyJson = '';
+        $this->hasLocalChanges = false;
+        $this->hasUpstreamDiff = false;
 
         $catalog = app(EggIndexService::class)->findByKey($this->key);
         if (!$catalog) {
@@ -180,6 +184,8 @@ class EggBrowserDetailPage extends Page
         }
 
         $this->catalogEgg = $catalog;
+        $statusService = app(EggStatusService::class);
+        $normalizer = app(EggNormalizer::class);
 
         try {
             $manifest = app(EggManifestService::class)->fetch(
@@ -190,6 +196,7 @@ class EggBrowserDetailPage extends Page
             );
             $this->manifest = $manifest['parsed'];
             $this->rawJson = $manifest['content'];
+            $this->upstreamPrettyJson = $normalizer->pretty($this->manifest);
 
             // Enrich display name/description from manifest
             $this->catalogEgg['name'] = $this->manifest['name'] ?? $this->catalogEgg['name'];
@@ -200,17 +207,23 @@ class EggBrowserDetailPage extends Page
             $this->error = $e->getMessage();
         }
 
-        $result = app(EggStatusService::class)->resolveCatalogEgg($this->catalogEgg, fetchUpstream: true);
+        $result = $statusService->resolveCatalogEgg($this->catalogEgg, fetchUpstream: true);
         $this->statusValue = $result['status']->value;
         $this->localEggId = $result['local_egg']?->id;
         $this->trackedId = $result['tracked']?->id;
 
-        if ($result['local_egg'] && !empty($result['upstream_parsed'])) {
-            $this->diff = app(EggStatusService::class)
-                ->diffLocalAgainstUpstream($result['local_egg'], $result['upstream_parsed']);
-        } elseif ($result['local_egg'] && $this->manifest) {
-            $this->diff = app(EggStatusService::class)
-                ->diffLocalAgainstUpstream($result['local_egg'], $this->manifest);
+        $upstreamParsed = $result['upstream_parsed'] ?? $this->manifest;
+        if ($result['local_egg'] && is_array($upstreamParsed)) {
+            $localParsed = $statusService->exportLocalAsArray($result['local_egg']);
+            $this->localPrettyJson = $normalizer->pretty($localParsed);
+            $this->diff = $normalizer->diffSections($localParsed, $upstreamParsed);
+            $this->hasUpstreamDiff = collect($this->diff)->contains(fn ($info) => !empty($info['changed']));
+
+            $installed = $result['installed_fingerprint'] ?? null;
+            $current = $result['current_fingerprint'] ?? null;
+            $this->hasLocalChanges = is_string($installed)
+                && is_string($current)
+                && !hash_equals($installed, $current);
         }
 
         $this->installTags = $this->defaultInstallTags();
@@ -355,5 +368,24 @@ class EggBrowserDetailPage extends Page
                 ? ($sections['config_files']['stop'] ?? null)
                 : null,
         ];
+    }
+
+    public function formatDiffValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_scalar($value)) {
+            $text = (string) $value;
+
+            return $text === '' ? '""' : $text;
+        }
+
+        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) ?: '[complex]';
     }
 }

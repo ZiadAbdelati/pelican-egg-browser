@@ -64,7 +64,11 @@ class EggNormalizer
             'variables' => $this->normalizeVariables(Arr::get($egg, 'variables', [])),
             'meta' => [
                 'version' => Arr::get($egg, 'meta.version'),
-                'update_url' => Arr::get($egg, 'meta.update_url') ?? Arr::get($egg, 'update_url'),
+                // Treat missing/blank update_url as equivalent so empty local fields
+                // don't create false "metadata changed" vs upstream null.
+                'update_url' => $this->normalizeNullableString(
+                    Arr::get($egg, 'meta.update_url') ?? Arr::get($egg, 'update_url')
+                ),
             ],
         ];
 
@@ -231,6 +235,17 @@ class EggNormalizer
         $text = str_replace(["\r\n", "\r"], "\n", (string) $value);
 
         return trim($text);
+    }
+
+    protected function normalizeNullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = trim((string) $value);
+
+        return $text === '' ? null : $text;
     }
 
     /**

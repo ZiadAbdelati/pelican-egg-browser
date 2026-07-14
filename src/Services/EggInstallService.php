@@ -181,13 +181,27 @@ class EggInstallService
     /**
      * Discover panel eggs that match the catalog and create tracking rows.
      *
-     * @return array{linked: int, checked: int, skipped: int, errors: list<string>}
+     * @return array{
+     *   linked: int,
+     *   checked: int,
+     *   skipped: int,
+     *   errors: list<string>,
+     *   stats: array{local_total: int, local_untracked: int, catalog_total: int, matched: int}
+     * }
      */
     public function linkLocalMatches(bool $checkUpstream = true): array
     {
         $this->matcher->forget();
+
+        // Ensure we have a fresh-enough index; do not force GitHub on every click.
         $catalog = $this->index->allEggs(forceRefresh: false);
-        $matches = $this->matcher->matchCatalog($catalog);
+        if ($catalog === []) {
+            $catalog = $this->index->allEggs(forceRefresh: true);
+        }
+
+        $result = $this->matcher->matchCatalog($catalog);
+        $matches = $result['matches'];
+        $stats = $result['stats'];
 
         $linked = 0;
         $checked = 0;
@@ -212,8 +226,14 @@ class EggInstallService
 
             try {
                 if ($checkUpstream) {
-                    $this->linkExisting($egg, $catalogEgg);
-                    $checked++;
+                    try {
+                        $this->linkExisting($egg, $catalogEgg);
+                        $checked++;
+                    } catch (\Throwable $e) {
+                        // Still create a lightweight link if upstream fetch fails.
+                        $this->linkExistingLightweight($egg, $catalogEgg);
+                        $errors[] = ($egg->name ?? 'egg') . ' linked without upstream check: ' . $e->getMessage();
+                    }
                 } else {
                     $this->linkExistingLightweight($egg, $catalogEgg);
                 }
@@ -225,7 +245,21 @@ class EggInstallService
 
         $this->matcher->forget();
 
-        return compact('linked', 'checked', 'skipped', 'errors');
+        if ($linked === 0 && $stats['local_untracked'] > 0 && $stats['catalog_total'] === 0) {
+            $errors[] = 'Catalog is empty. Refresh the egg index first.';
+        } elseif ($linked === 0 && $stats['local_untracked'] === 0 && $stats['local_total'] > 0) {
+            $errors[] = 'All local eggs are already tracked.';
+        } elseif ($linked === 0 && $stats['local_untracked'] > 0) {
+            $errors[] = "No confident matches for {$stats['local_untracked']} untracked local egg(s) against {$stats['catalog_total']} catalog egg(s). Names/slugs may differ; open an egg detail and install/link manually, or ensure update_url points at the GitHub raw JSON.";
+        }
+
+        return [
+            'linked' => $linked,
+            'checked' => $checked,
+            'skipped' => $skipped,
+            'errors' => $errors,
+            'stats' => $stats,
+        ];
     }
 
     /**

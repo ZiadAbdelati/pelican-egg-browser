@@ -125,6 +125,7 @@ return [
         'check_queued' => 'Update check queued',
         'check_done' => 'Update check finished',
         'link_done' => 'Linked :linked eggs (:checked checked, :skipped already tracked)',
+        'link_stats' => 'Local eggs: :local_total (:local_untracked untracked). Catalog: :catalog_total. Matched: :matched.',
         'error' => 'Something went wrong',
     ],
 ];

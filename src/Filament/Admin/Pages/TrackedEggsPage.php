@@ -57,10 +57,19 @@ class TrackedEggsPage extends Page
                 ->icon('tabler-link')
                 ->color('primary')
                 ->requiresConfirmation()
-                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
                 ->action(function (): void {
                     try {
                         $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
+
+                        $body = (string) __('egg-browser::strings.notifications.link_stats', [
+                            'local_total' => $result['stats']['local_total'] ?? 0,
+                            'local_untracked' => $result['stats']['local_untracked'] ?? 0,
+                            'catalog_total' => $result['stats']['catalog_total'] ?? 0,
+                            'matched' => $result['stats']['matched'] ?? 0,
+                        ]);
+                        if (!empty($result['errors'])) {
+                            $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
+                        }
 
                         Notification::make()
                             ->title((string) __('egg-browser::strings.notifications.link_done', [
@@ -68,7 +77,7 @@ class TrackedEggsPage extends Page
                                 'checked' => $result['checked'],
                                 'skipped' => $result['skipped'],
                             ]))
-                            ->body(!empty($result['errors']) ? implode("\n", array_slice($result['errors'], 0, 5)) : null)
+                            ->body($body)
                             ->success()
                             ->send();
                     } catch (Throwable $e) {

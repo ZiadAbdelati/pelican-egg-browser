@@ -24,6 +24,10 @@ class LinkLocalEggsCommand extends Command
             return self::FAILURE;
         }
 
+        $stats = $result['stats'] ?? [];
+        $this->line('Local eggs: ' . ($stats['local_total'] ?? 0) . ' (' . ($stats['local_untracked'] ?? 0) . ' untracked)');
+        $this->line('Catalog eggs: ' . ($stats['catalog_total'] ?? 0));
+        $this->line('Matched: ' . ($stats['matched'] ?? 0));
         $this->info("Linked: {$result['linked']}");
         $this->info("Upstream-checked: {$result['checked']}");
         $this->info("Skipped (already tracked): {$result['skipped']}");

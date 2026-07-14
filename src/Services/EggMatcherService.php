@@ -8,24 +8,21 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
- * Match panel eggs to upstream catalog entries without installing through this plugin.
+ * Match panel eggs to upstream catalog entries.
+ *
+ * Linking walks local eggs first (reverse match). Catalog tree indexes usually
+ * lack UUIDs/descriptions, so path/slug/name heuristics matter more than UUID.
  */
 class EggMatcherService
 {
     /** @var Collection<int, Egg>|null */
     protected ?Collection $localEggs = null;
 
-    /** @var array<string, Egg> */
-    protected array $byUuid = [];
-
-    /** @var array<string, list<Egg>> */
-    protected array $byName = [];
-
-    /** @var array<string, Egg> */
-    protected array $byUpdatePath = [];
-
     /** @var array<int, true> */
     protected array $alreadyTrackedEggIds = [];
+
+    /** @var array<string, true> */
+    protected array $alreadyTrackedSources = [];
 
     public function warm(): void
     {
@@ -38,118 +35,114 @@ class EggMatcherService
             ->orderBy('id')
             ->get();
 
-        $this->alreadyTrackedEggIds = TrackedEgg::query()
-            ->whereNotNull('egg_id')
+        $tracked = TrackedEgg::query()
+            ->get(['egg_id', 'source_owner', 'source_repo', 'source_path']);
+
+        $this->alreadyTrackedEggIds = $tracked
             ->pluck('egg_id')
+            ->filter()
             ->mapWithKeys(fn ($id) => [(int) $id => true])
             ->all();
 
-        foreach ($this->localEggs as $egg) {
-            $uuid = strtolower(trim((string) $egg->uuid));
-            if ($uuid !== '') {
-                $this->byUuid[$uuid] = $egg;
-            }
+        $this->alreadyTrackedSources = $tracked
+            ->mapWithKeys(function (TrackedEgg $row) {
+                $key = strtolower(trim($row->source_owner) . '/' . trim($row->source_repo) . ':' . trim($row->source_path));
 
-            $nameKey = $this->normalizeName((string) $egg->name);
-            if ($nameKey !== '') {
-                $this->byName[$nameKey] ??= [];
-                $this->byName[$nameKey][] = $egg;
-            }
-
-            foreach ($this->pathsFromUpdateUrl((string) ($egg->update_url ?? '')) as $pathKey) {
-                $this->byUpdatePath[$pathKey] = $egg;
-            }
-        }
+                return [$key => true];
+            })
+            ->all();
     }
 
     /**
+     * Find a local panel egg for a catalog entry (browser list badges).
+     *
      * @param  array<string, mixed>  $catalogEgg
      */
     public function findLocalEgg(array $catalogEgg, bool $includeTracked = true): ?Egg
     {
         $this->warm();
 
-        $candidates = [];
+        $best = null;
+        $bestScore = 0;
 
-        $uuid = strtolower(trim((string) ($catalogEgg['uuid'] ?? '')));
-        if ($uuid !== '' && isset($this->byUuid[$uuid])) {
-            $candidates[] = ['egg' => $this->byUuid[$uuid], 'score' => 100, 'via' => 'uuid'];
-        }
-
-        $pathKey = $this->catalogPathKey($catalogEgg);
-        if ($pathKey !== '' && isset($this->byUpdatePath[$pathKey])) {
-            $candidates[] = ['egg' => $this->byUpdatePath[$pathKey], 'score' => 90, 'via' => 'update_url'];
-        }
-
-        // raw_url / html_url may also be stored in update_url with slightly different shape
-        foreach (['raw_url', 'html_url'] as $field) {
-            $url = (string) ($catalogEgg[$field] ?? '');
-            foreach ($this->pathsFromUpdateUrl($url) as $key) {
-                if (isset($this->byUpdatePath[$key])) {
-                    $candidates[] = ['egg' => $this->byUpdatePath[$key], 'score' => 85, 'via' => $field];
-                }
-            }
-        }
-
-        $nameKey = $this->normalizeName((string) ($catalogEgg['name'] ?? $catalogEgg['slug'] ?? ''));
-        if ($nameKey !== '' && isset($this->byName[$nameKey]) && count($this->byName[$nameKey]) === 1) {
-            $candidates[] = ['egg' => $this->byName[$nameKey][0], 'score' => 50, 'via' => 'name'];
-        }
-
-        if ($candidates === []) {
-            return null;
-        }
-
-        usort($candidates, fn ($a, $b) => $b['score'] <=> $a['score']);
-
-        foreach ($candidates as $candidate) {
-            /** @var Egg $egg */
-            $egg = $candidate['egg'];
+        foreach ($this->localEggs as $egg) {
             if (!$includeTracked && isset($this->alreadyTrackedEggIds[(int) $egg->id])) {
                 continue;
             }
 
-            return $egg;
+            $score = $this->score($egg, $catalogEgg);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $egg;
+            }
         }
 
-        return null;
+        // Require a reasonably confident match for list badges.
+        return $bestScore >= 50 ? $best : null;
     }
 
     /**
-     * @return list<array{egg: Egg, catalog: array<string, mixed>, via: string}>
+     * Match every untracked local egg to the best catalog entry.
+     *
+     * @param  list<array<string, mixed>>  $catalogEggs
+     * @return array{
+     *   matches: list<array{egg: Egg, catalog: array<string, mixed>, via: string, score: int}>,
+     *   stats: array{local_total: int, local_untracked: int, catalog_total: int, matched: int}
+     * }
      */
     public function matchCatalog(array $catalogEggs): array
     {
         $this->warm();
 
+        $catalog = array_values(array_filter($catalogEggs, 'is_array'));
+        $usedCatalogKeys = [];
         $matches = [];
-        $usedEggIds = [];
 
-        foreach ($catalogEggs as $catalogEgg) {
-            if (!is_array($catalogEgg)) {
-                continue;
+        $untracked = $this->localEggs
+            ->filter(fn (Egg $egg) => !isset($this->alreadyTrackedEggIds[(int) $egg->id]))
+            ->values();
+
+        foreach ($untracked as $egg) {
+            $best = null;
+            $bestScore = 0;
+            $bestVia = '';
+
+            foreach ($catalog as $catalogEgg) {
+                $key = $this->catalogKey($catalogEgg);
+                if ($key === '' || isset($usedCatalogKeys[$key]) || isset($this->alreadyTrackedSources[$key])) {
+                    continue;
+                }
+
+                $score = $this->score($egg, $catalogEgg);
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $best = $catalogEgg;
+                    $bestVia = $this->viaFromScore($score, $egg, $catalogEgg);
+                }
             }
 
-            $egg = $this->findLocalEgg($catalogEgg, includeTracked: true);
-            if (!$egg || isset($usedEggIds[$egg->id])) {
-                continue;
+            // Accept moderate+ confidence for linking.
+            if ($best !== null && $bestScore >= 45) {
+                $key = $this->catalogKey($best);
+                $usedCatalogKeys[$key] = true;
+                $matches[] = [
+                    'egg' => $egg,
+                    'catalog' => $best,
+                    'via' => $bestVia,
+                    'score' => $bestScore,
+                ];
             }
-
-            // Prefer higher-confidence matches only for auto-link.
-            $via = $this->matchVia($egg, $catalogEgg);
-            if ($via === null) {
-                continue;
-            }
-
-            $usedEggIds[$egg->id] = true;
-            $matches[] = [
-                'egg' => $egg,
-                'catalog' => $catalogEgg,
-                'via' => $via,
-            ];
         }
 
-        return $matches;
+        return [
+            'matches' => $matches,
+            'stats' => [
+                'local_total' => $this->localEggs->count(),
+                'local_untracked' => $untracked->count(),
+                'catalog_total' => count($catalog),
+                'matched' => count($matches),
+            ],
+        ];
     }
 
     /**
@@ -157,30 +150,12 @@ class EggMatcherService
      */
     public function matchVia(Egg $egg, array $catalogEgg): ?string
     {
-        $uuid = strtolower(trim((string) ($catalogEgg['uuid'] ?? '')));
-        if ($uuid !== '' && strtolower((string) $egg->uuid) === $uuid) {
-            return 'uuid';
+        $score = $this->score($egg, $catalogEgg);
+        if ($score < 45) {
+            return null;
         }
 
-        $pathKey = $this->catalogPathKey($catalogEgg);
-        foreach ($this->pathsFromUpdateUrl((string) ($egg->update_url ?? '')) as $key) {
-            if ($pathKey !== '' && $key === $pathKey) {
-                return 'update_url';
-            }
-        }
-
-        $nameKey = $this->normalizeName((string) ($catalogEgg['name'] ?? $catalogEgg['slug'] ?? ''));
-        $eggNameKey = $this->normalizeName((string) $egg->name);
-        if (
-            $nameKey !== ''
-            && $nameKey === $eggNameKey
-            && isset($this->byName[$nameKey])
-            && count($this->byName[$nameKey]) === 1
-        ) {
-            return 'name';
-        }
-
-        return null;
+        return $this->viaFromScore($score, $egg, $catalogEgg);
     }
 
     /**
@@ -199,26 +174,158 @@ class EggMatcherService
     public function forget(): void
     {
         $this->localEggs = null;
-        $this->byUuid = [];
-        $this->byName = [];
-        $this->byUpdatePath = [];
         $this->alreadyTrackedEggIds = [];
+        $this->alreadyTrackedSources = [];
+    }
+
+    /**
+     * Score how well a local egg matches a catalog entry.
+     *
+     * @param  array<string, mixed>  $catalogEgg
+     */
+    public function score(Egg $egg, array $catalogEgg): int
+    {
+        $score = 0;
+
+        $localUuid = strtolower(trim((string) $egg->uuid));
+        $catalogUuid = strtolower(trim((string) ($catalogEgg['uuid'] ?? '')));
+        if ($localUuid !== '' && $catalogUuid !== '' && $localUuid === $catalogUuid) {
+            $score = max($score, 100);
+        }
+
+        $localUpdate = strtolower(trim((string) ($egg->update_url ?? '')));
+        if ($localUpdate !== '') {
+            $catalogPaths = $this->catalogPathVariants($catalogEgg);
+            foreach ($this->pathsFromUpdateUrl($localUpdate) as $pathKey) {
+                if (isset($catalogPaths[$pathKey])) {
+                    $score = max($score, 95);
+                }
+            }
+
+            // Loose contains: update_url includes owner/repo/path fragments.
+            $owner = strtolower((string) ($catalogEgg['owner'] ?? ''));
+            $repo = strtolower((string) ($catalogEgg['repo'] ?? ''));
+            $path = strtolower(ltrim((string) ($catalogEgg['path'] ?? ''), '/'));
+            if ($owner && $repo && str_contains($localUpdate, $owner . '/' . $repo)) {
+                $score = max($score, 70);
+                if ($path !== '' && str_contains($localUpdate, $path)) {
+                    $score = max($score, 92);
+                } elseif ($path !== '' && str_contains($localUpdate, basename($path))) {
+                    $score = max($score, 80);
+                }
+            }
+        }
+
+        $localName = $this->normalizeName((string) $egg->name);
+        $catalogName = $this->normalizeName((string) ($catalogEgg['name'] ?? ''));
+        $catalogSlug = $this->normalizeName((string) ($catalogEgg['slug'] ?? ''));
+        $pathSlug = $this->normalizeName($this->slugFromPath((string) ($catalogEgg['path'] ?? '')));
+
+        if ($localName !== '') {
+            if ($catalogName !== '' && $localName === $catalogName) {
+                $score = max($score, 75);
+            }
+            if ($catalogSlug !== '' && $localName === $catalogSlug) {
+                $score = max($score, 72);
+            }
+            if ($pathSlug !== '' && $localName === $pathSlug) {
+                $score = max($score, 70);
+            }
+
+            // Compact compare: "paper spigot" vs "paperspigot", "vanilla minecraft" vs "vanilla"
+            $localCompact = $this->compact($localName);
+            foreach ([$catalogName, $catalogSlug, $pathSlug] as $candidate) {
+                if ($candidate === '') {
+                    continue;
+                }
+                $candCompact = $this->compact($candidate);
+                if ($candCompact !== '' && $localCompact === $candCompact) {
+                    $score = max($score, 68);
+                }
+                // one contains the other (min length guard)
+                if (
+                    strlen($localCompact) >= 4
+                    && strlen($candCompact) >= 4
+                    && (str_contains($localCompact, $candCompact) || str_contains($candCompact, $localCompact))
+                ) {
+                    $score = max($score, 55);
+                }
+            }
+
+            // Path folder names: minecraft/java/paper/egg-paper.json → paper
+            $path = (string) ($catalogEgg['path'] ?? '');
+            foreach (explode('/', $path) as $segment) {
+                $seg = $this->normalizeName(preg_replace('/\.json$/i', '', $segment) ?? $segment);
+                $seg = $this->normalizeName(preg_replace('/^(egg-|pelican-egg-|pterodactyl-egg-)/i', '', $seg) ?? $seg);
+                if ($seg !== '' && ($seg === $localName || $this->compact($seg) === $this->compact($localName))) {
+                    $score = max($score, 60);
+                }
+            }
+        }
+
+        return $score;
     }
 
     /**
      * @param  array<string, mixed>  $catalogEgg
      */
-    protected function catalogPathKey(array $catalogEgg): string
+    protected function viaFromScore(int $score, Egg $egg, array $catalogEgg): string
     {
+        if ($score >= 100) {
+            return 'uuid';
+        }
+        if ($score >= 90) {
+            return 'update_url';
+        }
+        if ($score >= 70) {
+            return 'name';
+        }
+        if ($score >= 55) {
+            return 'slug';
+        }
+
+        return 'heuristic';
+    }
+
+    /**
+     * @param  array<string, mixed>  $catalogEgg
+     * @return array<string, true>
+     */
+    protected function catalogPathVariants(array $catalogEgg): array
+    {
+        $out = [];
         $owner = strtolower(trim((string) ($catalogEgg['owner'] ?? '')));
         $repo = strtolower(trim((string) ($catalogEgg['repo'] ?? '')));
         $path = strtolower(ltrim(trim((string) ($catalogEgg['path'] ?? '')), '/'));
+
+        if ($owner && $repo && $path) {
+            $out[$owner . '/' . $repo . '/' . $path] = true;
+            $out[$owner . '/' . $repo . '/' . basename($path)] = true;
+        }
+
+        foreach (['raw_url', 'html_url'] as $field) {
+            foreach ($this->pathsFromUpdateUrl((string) ($catalogEgg[$field] ?? '')) as $key) {
+                $out[$key] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $catalogEgg
+     */
+    protected function catalogKey(array $catalogEgg): string
+    {
+        $owner = strtolower(trim((string) ($catalogEgg['owner'] ?? '')));
+        $repo = strtolower(trim((string) ($catalogEgg['repo'] ?? '')));
+        $path = trim((string) ($catalogEgg['path'] ?? ''));
 
         if ($owner === '' || $repo === '' || $path === '') {
             return '';
         }
 
-        return $owner . '/' . $repo . '/' . $path;
+        return $owner . '/' . $repo . ':' . $path;
     }
 
     /**
@@ -233,29 +340,49 @@ class EggMatcherService
 
         $keys = [];
 
-        // raw.githubusercontent.com/owner/repo/branch/path...
         if (preg_match('#raw\.githubusercontent\.com/([^/]+)/([^/]+)/[^/]+/(.+)$#i', $url, $m)) {
-            $keys[] = strtolower($m[1] . '/' . $m[2] . '/' . ltrim($m[3], '/'));
+            $owner = strtolower($m[1]);
+            $repo = strtolower($m[2]);
+            $path = strtolower(ltrim($m[3], '/'));
+            $keys[] = $owner . '/' . $repo . '/' . $path;
+            $keys[] = $owner . '/' . $repo . '/' . basename($path);
         }
 
-        // github.com/owner/repo/blob/branch/path...
-        if (preg_match('#github\.com/([^/]+)/([^/]+)/blob/[^/]+/(.+)$#i', $url, $m)) {
-            $keys[] = strtolower($m[1] . '/' . $m[2] . '/' . ltrim($m[3], '/'));
+        if (preg_match('#github\.com/([^/]+)/([^/]+)/(?:blob|raw)/[^/]+/(.+)$#i', $url, $m)) {
+            $owner = strtolower($m[1]);
+            $repo = strtolower($m[2]);
+            $path = strtolower(ltrim($m[3], '/'));
+            $keys[] = $owner . '/' . $repo . '/' . $path;
+            $keys[] = $owner . '/' . $repo . '/' . basename($path);
         }
 
-        // github.com/owner/repo/.../path.json (fallback)
-        if (preg_match('#github\.com/([^/]+)/([^/]+)/.+?/([^?]+\.json)$#i', $url, $m)) {
-            $keys[] = strtolower($m[1] . '/' . $m[2] . '/' . ltrim($m[3], '/'));
+        // Catch query-string / refs/heads variants
+        if (preg_match('#github\.com/([^/]+)/([^/]+).+?/([^/?#]+\.json)#i', $url, $m)) {
+            $keys[] = strtolower($m[1] . '/' . $m[2] . '/' . $m[3]);
         }
 
         return array_values(array_unique($keys));
     }
 
+    protected function slugFromPath(string $path): string
+    {
+        $base = basename($path, '.json');
+        $base = preg_replace('/^(egg-|pelican-egg-|pterodactyl-egg-|egg-pterodactyl-)/i', '', $base) ?? $base;
+
+        return $base;
+    }
+
     protected function normalizeName(string $name): string
     {
         $name = Str::lower(trim($name));
+        $name = str_replace(['_', '-'], ' ', $name);
         $name = preg_replace('/\s+/', ' ', $name) ?? $name;
 
         return $name;
+    }
+
+    protected function compact(string $name): string
+    {
+        return preg_replace('/[^a-z0-9]+/', '', Str::lower($name)) ?? '';
     }
 }

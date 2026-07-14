@@ -1,0 +1,16 @@
+{
+    "id": "egg-browser",
+    "name": "Egg Browser",
+    "author": "community",
+    "version": "1.0.0",
+    "description": "Discover, install, and maintain game-server eggs from the official Pelican egg repositories.",
+    "category": "plugin",
+    "url": "https://github.com/pelican-eggs",
+    "namespace": "Community\\EggBrowser",
+    "class": "EggBrowserPlugin",
+    "panels": [
+        "admin"
+    ],
+    "panel_version": "^1.0.0",
+    "composer_packages": null
+}

@@ -1,0 +1,301 @@
+<?php
+
+namespace Community\EggBrowser\Services;
+
+use App\Enums\EggFormat;
+use App\Models\Egg;
+use App\Services\Eggs\Sharing\EggExporterService;
+use Community\EggBrowser\Enums\EggInstallStatus;
+use Community\EggBrowser\Models\TrackedEgg;
+use Community\EggBrowser\Support\EggNormalizer;
+use Illuminate\Support\Facades\Log;
+use JsonException;
+
+class EggStatusService
+{
+    public function __construct(
+        protected EggManifestService $manifests,
+        protected EggNormalizer $normalizer,
+        protected EggExporterService $exporter,
+    ) {}
+
+    /**
+     * Resolve install/update status for a catalog egg entry.
+     *
+     * @param  array<string, mixed>  $catalogEgg
+     * @return array{
+     *   status: EggInstallStatus,
+     *   tracked: ?TrackedEgg,
+     *   local_egg: ?Egg,
+     *   upstream_fingerprint: ?string,
+     *   installed_fingerprint: ?string,
+     *   current_fingerprint: ?string,
+     *   error: ?string
+     * }
+     */
+    public function resolveCatalogEgg(array $catalogEgg, bool $fetchUpstream = true): array
+    {
+        $tracked = TrackedEgg::query()
+            ->where('source_owner', $catalogEgg['owner'])
+            ->where('source_repo', $catalogEgg['repo'])
+            ->where('source_path', $catalogEgg['path'])
+            ->first();
+
+        $localEgg = $this->resolveLocalEgg($tracked, $catalogEgg);
+
+        if (!$localEgg && !$tracked) {
+            return [
+                'status' => EggInstallStatus::NotInstalled,
+                'tracked' => null,
+                'local_egg' => null,
+                'upstream_fingerprint' => null,
+                'installed_fingerprint' => null,
+                'current_fingerprint' => null,
+                'error' => null,
+            ];
+        }
+
+        if ($localEgg && !$tracked) {
+            return [
+                'status' => EggInstallStatus::UnknownUnlinked,
+                'tracked' => null,
+                'local_egg' => $localEgg,
+                'upstream_fingerprint' => null,
+                'installed_fingerprint' => null,
+                'current_fingerprint' => $this->fingerprintLocalEgg($localEgg),
+                'error' => null,
+            ];
+        }
+
+        try {
+            $upstreamFingerprint = $tracked?->upstream_fingerprint;
+            $upstreamParsed = null;
+
+            if ($fetchUpstream) {
+                $manifest = $this->manifests->fetch(
+                    $catalogEgg['owner'],
+                    $catalogEgg['repo'],
+                    $catalogEgg['path'],
+                    $catalogEgg['branch'] ?? 'main',
+                );
+                $upstreamParsed = $manifest['parsed'];
+                $upstreamFingerprint = $this->normalizer->fingerprint($upstreamParsed);
+
+                if ($tracked) {
+                    $tracked->upstream_fingerprint = $upstreamFingerprint;
+                    $tracked->source_sha = $catalogEgg['tree_sha'] ?? $tracked->source_sha;
+                    $tracked->source_blob_sha = $catalogEgg['blob_sha'] ?? $tracked->source_blob_sha;
+                    $tracked->last_checked_at = now();
+                    $tracked->last_error = null;
+                }
+            }
+
+            $installedFingerprint = $tracked?->installed_fingerprint;
+
+            // List views pass fetchUpstream=false: trust stored status when present to avoid
+            // exporting every local egg on each page load.
+            if (!$fetchUpstream && $tracked) {
+                $status = EggInstallStatus::tryFrom($tracked->status) ?? EggInstallStatus::UnknownUnlinked;
+
+                // If the panel egg was deleted, surface not installed / unlinked cleanly.
+                if (!$localEgg) {
+                    $status = EggInstallStatus::NotInstalled;
+                }
+
+                return [
+                    'status' => $status,
+                    'tracked' => $tracked,
+                    'local_egg' => $localEgg,
+                    'upstream_fingerprint' => $upstreamFingerprint,
+                    'installed_fingerprint' => $installedFingerprint,
+                    'current_fingerprint' => null,
+                    'upstream_parsed' => null,
+                    'error' => $tracked->last_error,
+                ];
+            }
+
+            $currentFingerprint = $localEgg ? $this->fingerprintLocalEgg($localEgg) : null;
+
+            $status = $this->computeStatus(
+                installed: $installedFingerprint,
+                current: $currentFingerprint,
+                upstream: $upstreamFingerprint,
+                hasLocal: (bool) $localEgg,
+            );
+
+            if ($tracked) {
+                $tracked->status = $status->value;
+                if ($localEgg) {
+                    $tracked->egg_id = $localEgg->id;
+                    $tracked->egg_uuid = $localEgg->uuid;
+                    $tracked->egg_name = $localEgg->name;
+                }
+                $tracked->save();
+            }
+
+            return [
+                'status' => $status,
+                'tracked' => $tracked,
+                'local_egg' => $localEgg,
+                'upstream_fingerprint' => $upstreamFingerprint,
+                'installed_fingerprint' => $installedFingerprint,
+                'current_fingerprint' => $currentFingerprint,
+                'upstream_parsed' => $upstreamParsed,
+                'error' => null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('[egg-browser] status check failed', [
+                'key' => $catalogEgg['key'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            if ($tracked) {
+                $tracked->status = EggInstallStatus::CheckFailed->value;
+                $tracked->last_error = $e->getMessage();
+                $tracked->last_checked_at = now();
+                $tracked->save();
+            }
+
+            return [
+                'status' => EggInstallStatus::CheckFailed,
+                'tracked' => $tracked,
+                'local_egg' => $localEgg,
+                'upstream_fingerprint' => $tracked?->upstream_fingerprint,
+                'installed_fingerprint' => $tracked?->installed_fingerprint,
+                'current_fingerprint' => $localEgg ? $this->fingerprintLocalEgg($localEgg) : null,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Re-check a tracked egg against upstream.
+     */
+    public function checkTracked(TrackedEgg $tracked, bool $fetchUpstream = true): EggInstallStatus
+    {
+        $catalog = [
+            'owner' => $tracked->source_owner,
+            'repo' => $tracked->source_repo,
+            'path' => $tracked->source_path,
+            'branch' => $tracked->source_branch,
+            'key' => $tracked->sourceKey(),
+            'tree_sha' => $tracked->source_sha,
+            'blob_sha' => $tracked->source_blob_sha,
+        ];
+
+        if (!$fetchUpstream) {
+            // Source unavailable path if we cannot reach upstream and have no cached fingerprint.
+            if (!$tracked->upstream_fingerprint) {
+                $tracked->status = EggInstallStatus::SourceUnavailable->value;
+                $tracked->last_checked_at = now();
+                $tracked->save();
+
+                return EggInstallStatus::SourceUnavailable;
+            }
+        }
+
+        $result = $this->resolveCatalogEgg($catalog, $fetchUpstream);
+
+        return $result['status'];
+    }
+
+    /**
+     * Build a structured section diff between local egg and upstream JSON.
+     *
+     * @return array<string, array{changed: bool, left: mixed, right: mixed}>
+     */
+    public function diffLocalAgainstUpstream(Egg $local, array $upstreamParsed): array
+    {
+        $localParsed = $this->exportLocalAsArray($local);
+
+        return $this->normalizer->diffSections($localParsed, $upstreamParsed);
+    }
+
+    public function fingerprintLocalEgg(Egg $egg): string
+    {
+        return $this->normalizer->fingerprint($this->exportLocalAsArray($egg));
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function exportLocalAsArray(Egg $egg): array
+    {
+        $json = $this->exporter->handle($egg->id, EggFormat::JSON);
+
+        try {
+            /** @var array<array-key, mixed> $parsed */
+            $parsed = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            throw new \RuntimeException('Failed to export local egg JSON: ' . $e->getMessage(), 0, $e);
+        }
+
+        return $parsed;
+    }
+
+    protected function computeStatus(
+        ?string $installed,
+        ?string $current,
+        ?string $upstream,
+        bool $hasLocal,
+    ): EggInstallStatus {
+        if (!$hasLocal) {
+            return EggInstallStatus::NotInstalled;
+        }
+
+        if ($upstream === null) {
+            return EggInstallStatus::SourceUnavailable;
+        }
+
+        $localDirty = $installed && $current && !hash_equals($installed, $current);
+        $updateAvailable = $installed && $upstream && !hash_equals($installed, $upstream);
+
+        // If we only have current vs upstream (no install snapshot), approximate.
+        if (!$installed && $current) {
+            return hash_equals($current, $upstream)
+                ? EggInstallStatus::UpToDate
+                : EggInstallStatus::UpdateAvailable;
+        }
+
+        if ($localDirty && $updateAvailable) {
+            return EggInstallStatus::LocalChangesAndUpdate;
+        }
+
+        if ($localDirty) {
+            return EggInstallStatus::LocalChanges;
+        }
+
+        if ($updateAvailable) {
+            return EggInstallStatus::UpdateAvailable;
+        }
+
+        return EggInstallStatus::UpToDate;
+    }
+
+    /**
+     * @param  array<string, mixed>  $catalogEgg
+     */
+    protected function resolveLocalEgg(?TrackedEgg $tracked, array $catalogEgg): ?Egg
+    {
+        if ($tracked?->egg_id) {
+            $egg = Egg::query()->find($tracked->egg_id);
+            if ($egg) {
+                return $egg;
+            }
+        }
+
+        if ($tracked?->egg_uuid) {
+            $egg = Egg::query()->where('uuid', $tracked->egg_uuid)->first();
+            if ($egg) {
+                return $egg;
+            }
+        }
+
+        // Best-effort match by UUID from catalog metadata if present.
+        if (!empty($catalogEgg['uuid'])) {
+            return Egg::query()->where('uuid', $catalogEgg['uuid'])->first();
+        }
+
+        return null;
+    }
+}

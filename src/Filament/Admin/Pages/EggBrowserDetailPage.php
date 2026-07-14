@@ -58,6 +58,9 @@ class EggBrowserDetailPage extends Page
 
     public string $unifiedDiff = '';
 
+    /** @var list<array{tag: string, text: string, class: string}> */
+    public array $unifiedDiffRows = [];
+
     public bool $hasLocalChanges = false;
 
     public bool $hasUpstreamDiff = false;
@@ -167,6 +170,7 @@ class EggBrowserDetailPage extends Page
         $this->localPrettyJson = '';
         $this->upstreamPrettyJson = '';
         $this->unifiedDiff = '';
+        $this->unifiedDiffRows = [];
         $this->hasLocalChanges = false;
         $this->hasUpstreamDiff = false;
 

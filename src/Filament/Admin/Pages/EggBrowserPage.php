@@ -4,21 +4,15 @@ namespace Community\EggBrowser\Filament\Admin\Pages;
 
 use Community\EggBrowser\Enums\EggInstallStatus;
 use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
-use Community\EggBrowser\Jobs\RefreshEggIndexJob;
 use Community\EggBrowser\Services\EggIndexService;
 use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Filament\Actions\Action;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Filament\Schemas\Components\Grid;
-use Filament\Schemas\Components\Section;
-use Filament\Schemas\Schema;
 use Filament\Support\Enums\Width;
 use Illuminate\Support\Collection;
-use Livewire\Attributes\Url;
+use Throwable;
 
 class EggBrowserPage extends Page
 {
@@ -30,38 +24,57 @@ class EggBrowserPage extends Page
 
     protected string $view = 'egg-browser::filament.egg-browser';
 
-    #[Url]
-    public string $q = '';
+    public string $search = '';
 
-    #[Url]
-    public ?string $repository = null;
+    public string $filterRepository = '';
 
-    #[Url]
-    public ?string $category = null;
+    public string $filterCategory = '';
 
-    #[Url]
-    public ?string $statusFilter = null;
+    public string $filterStatus = '';
 
-    #[Url]
     public int $catalogPage = 1;
 
     public int $perPage = 24;
 
-    public ?string $indexError = null;
+    public string $indexError = '';
+
+    /** @var list<array<string, mixed>> */
+    public array $eggCards = [];
+
+    public int $eggTotal = 0;
+
+    public int $eggTotalPages = 1;
+
+    /** @var array<string, string> */
+    public array $repositoryOptions = [];
+
+    /** @var array<string, string> */
+    public array $categoryOptions = [];
+
+    /** @var array<string, string> */
+    public array $statusOptions = [];
+
+    public string $rateLimitText = 'n/a';
+
+    public function mount(): void
+    {
+        $this->statusOptions = $this->buildStatusOptions();
+        $this->reloadCatalog();
+    }
 
     public function getTitle(): string
     {
-        return trans('egg-browser::strings.browser.title');
+        return (string) __('egg-browser::strings.browser.title');
     }
 
     public static function getNavigationLabel(): string
     {
-        return trans('egg-browser::strings.navigation.browser');
+        return (string) __('egg-browser::strings.navigation.browser');
     }
 
     public static function getNavigationGroup(): ?string
     {
-        return trans('egg-browser::strings.navigation.group');
+        return (string) __('egg-browser::strings.navigation.group');
     }
 
     public static function canAccess(): bool
@@ -72,7 +85,6 @@ class EggBrowserPage extends Page
             return false;
         }
 
-        // Fall back to admin-only when custom permissions are not yet granted.
         if (method_exists($user, 'can') && ($user->can('egg_browser.view') || $user->can('admin.*') || $user->can('egg.*'))) {
             return true;
         }
@@ -89,160 +101,239 @@ class EggBrowserPage extends Page
     {
         return [
             Action::make('refreshIndex')
-                ->label(trans('egg-browser::strings.browser.refresh_index'))
+                ->label((string) __('egg-browser::strings.browser.refresh_index'))
                 ->icon('tabler-refresh')
                 ->color('gray')
                 ->requiresConfirmation()
-                ->action(function () {
+                ->action(function (): void {
                     try {
                         app(EggIndexService::class)->forgetCache();
                         app(EggIndexService::class)->allEggs(forceRefresh: true);
+                        $this->reloadCatalog(forceRefresh: false);
 
                         Notification::make()
-                            ->title(trans('egg-browser::strings.notifications.index_refreshed'))
+                            ->title((string) __('egg-browser::strings.notifications.index_refreshed'))
                             ->success()
                             ->send();
-                    } catch (\Throwable $e) {
+                    } catch (Throwable $e) {
                         Notification::make()
-                            ->title(trans('egg-browser::strings.notifications.error'))
+                            ->title((string) __('egg-browser::strings.notifications.error'))
                             ->body($e->getMessage())
                             ->danger()
                             ->send();
                     }
                 }),
             Action::make('checkUpdates')
-                ->label(trans('egg-browser::strings.browser.check_updates'))
+                ->label((string) __('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
-                ->action(function () {
+                ->action(function (): void {
                     CheckAllTrackedEggsJob::dispatch(refreshIndex: false);
 
                     Notification::make()
-                        ->title(trans('egg-browser::strings.notifications.check_queued'))
+                        ->title((string) __('egg-browser::strings.notifications.check_queued'))
                         ->success()
                         ->send();
                 }),
         ];
     }
 
-    /**
-     * @return Collection<int, array<string, mixed>>
-     */
-    public function getEggsProperty(): Collection
+    public function updatedSearch(): void
     {
-        $this->indexError = null;
-
-        try {
-            $eggs = app(EggIndexService::class)->search([
-                'q' => $this->q,
-                'repository' => $this->repository,
-                'category' => $this->category,
-            ]);
-        } catch (\Throwable $e) {
-            $this->indexError = $e->getMessage();
-
-            return collect();
-        }
-
-        $statusService = app(EggStatusService::class);
-
-        $enriched = $eggs->map(function (array $egg) use ($statusService) {
-            // Cheap status: use tracked rows without re-fetching every upstream on list view.
-            $result = $statusService->resolveCatalogEgg($egg, fetchUpstream: false);
-            $egg['install_status'] = $result['status'] instanceof EggInstallStatus
-                ? $result['status']->value
-                : (string) ($result['status'] ?? EggInstallStatus::NotInstalled->value);
-            $egg['local_egg_id'] = $result['local_egg']?->id;
-
-            return $egg;
-        });
-
-        if ($this->statusFilter) {
-            $enriched = $enriched->filter(
-                fn (array $egg) => ($egg['install_status'] ?? '') === $this->statusFilter
-            )->values();
-        }
-
-        return $enriched;
-    }
-
-    /**
-     * @return Collection<int, array<string, mixed>>
-     */
-    public function getPaginatedEggsProperty(): Collection
-    {
-        $offset = max(0, ($this->catalogPage - 1) * $this->perPage);
-
-        return $this->eggs->slice($offset, $this->perPage)->values();
-    }
-
-    public function getTotalPagesProperty(): int
-    {
-        return max(1, (int) ceil($this->eggs->count() / max(1, $this->perPage)));
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function getRepositoryOptionsProperty(): array
-    {
-        return app(EggIndexService::class)->repositoryOptions();
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function getCategoryOptionsProperty(): array
-    {
-        $cats = app(EggIndexService::class)->categories();
-
-        return collect($cats)->mapWithKeys(fn ($c) => [$c => $c])->all();
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function getStatusOptionsProperty(): array
-    {
-        return collect(EggInstallStatus::cases())
-            ->mapWithKeys(fn (EggInstallStatus $s) => [$s->value => $s->displayName()])
-            ->all();
-    }
-
-    /**
-     * @return array{rate_limit: ?int, remaining: ?int, reset: ?int, authenticated: bool}
-     */
-    public function getRateLimitProperty(): array
-    {
-        return app(GitHubClient::class)->rateLimitStatus();
-    }
-
-    public function updatedQ(): void
-    {
+        $this->search = $this->scalarString($this->search);
         $this->catalogPage = 1;
+        $this->reloadCatalog();
     }
 
-    public function updatedRepository(): void
+    public function updatedFilterRepository(): void
     {
+        $this->filterRepository = $this->scalarString($this->filterRepository);
         $this->catalogPage = 1;
+        $this->reloadCatalog();
     }
 
-    public function updatedCategory(): void
+    public function updatedFilterCategory(): void
     {
+        $this->filterCategory = $this->scalarString($this->filterCategory);
         $this->catalogPage = 1;
+        $this->reloadCatalog();
     }
 
-    public function updatedStatusFilter(): void
+    public function updatedFilterStatus(): void
     {
+        $this->filterStatus = $this->scalarString($this->filterStatus);
         $this->catalogPage = 1;
+        $this->reloadCatalog();
     }
 
     public function gotoPage(int $page): void
     {
-        $this->catalogPage = max(1, min($page, $this->totalPages));
+        $this->catalogPage = max(1, min($page, max(1, $this->eggTotalPages)));
+        $this->reloadCatalog();
     }
 
     public function detailUrl(string $key): string
     {
         return EggBrowserDetailPage::getUrl(['key' => $key]);
+    }
+
+    public function reloadCatalog(bool $forceRefresh = false): void
+    {
+        $this->indexError = '';
+        $this->search = $this->scalarString($this->search);
+        $this->filterRepository = $this->scalarString($this->filterRepository);
+        $this->filterCategory = $this->scalarString($this->filterCategory);
+        $this->filterStatus = $this->scalarString($this->filterStatus);
+
+        $index = app(EggIndexService::class);
+        $statusService = app(EggStatusService::class);
+
+        try {
+            $this->repositoryOptions = $this->stringifyOptions($index->repositoryOptions());
+            $this->categoryOptions = $this->stringifyOptions(
+                collect($index->categories())->mapWithKeys(fn ($c) => [(string) $c => (string) $c])->all()
+            );
+            $this->statusOptions = $this->buildStatusOptions();
+            $this->rateLimitText = $this->formatRateLimit(app(GitHubClient::class)->rateLimitStatus());
+
+            $eggs = $index->search([
+                'q' => $this->search,
+                'repository' => $this->filterRepository,
+                'category' => $this->filterCategory,
+            ], $forceRefresh);
+
+            $cards = $eggs->map(function (array $egg) use ($statusService): array {
+                $result = $statusService->resolveCatalogEgg($egg, fetchUpstream: false);
+                $status = $result['status'] instanceof EggInstallStatus
+                    ? $result['status']
+                    : EggInstallStatus::NotInstalled;
+
+                return $this->toCard($egg, $status);
+            });
+
+            if ($this->filterStatus !== '') {
+                $cards = $cards->filter(
+                    fn (array $card) => ($card['status'] ?? '') === $this->filterStatus
+                )->values();
+            }
+
+            $this->eggTotal = $cards->count();
+            $this->eggTotalPages = max(1, (int) ceil($this->eggTotal / max(1, $this->perPage)));
+            $this->catalogPage = max(1, min($this->catalogPage, $this->eggTotalPages));
+
+            $offset = ($this->catalogPage - 1) * $this->perPage;
+            $this->eggCards = $cards->slice($offset, $this->perPage)->values()->all();
+        } catch (Throwable $e) {
+            $this->indexError = $e->getMessage();
+            $this->eggCards = [];
+            $this->eggTotal = 0;
+            $this->eggTotalPages = 1;
+            $this->catalogPage = 1;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $egg
+     * @return array{
+     *   key: string,
+     *   name: string,
+     *   repository_label: string,
+     *   category: string,
+     *   description: string,
+     *   path: string,
+     *   blob_sha: string,
+     *   status: string,
+     *   status_label: string,
+     *   status_color: string
+     * }
+     */
+    protected function toCard(array $egg, EggInstallStatus $status): array
+    {
+        $description = $egg['description'] ?? null;
+        if (!is_string($description) || trim($description) === '') {
+            $description = (string) __('egg-browser::strings.browser.no_description');
+        }
+
+        return [
+            'key' => $this->scalarString($egg['key'] ?? ''),
+            'name' => $this->scalarString($egg['name'] ?? $egg['slug'] ?? 'Egg'),
+            'repository_label' => $this->scalarString($egg['repository_label'] ?? $egg['repository'] ?? ''),
+            'category' => $this->scalarString($egg['category'] ?? '—'),
+            'description' => $description,
+            'path' => $this->scalarString($egg['path'] ?? ''),
+            'blob_sha' => $this->scalarString($egg['blob_sha'] ?? ''),
+            'status' => $status->value,
+            'status_label' => $status->displayName(),
+            'status_color' => $status->color(),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function buildStatusOptions(): array
+    {
+        $options = [];
+        foreach (EggInstallStatus::cases() as $status) {
+            $options[$status->value] = $status->displayName();
+        }
+
+        return $options;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $options
+     * @return array<string, string>
+     */
+    protected function stringifyOptions(array $options): array
+    {
+        $out = [];
+        foreach ($options as $key => $label) {
+            $out[$this->scalarString($key)] = $this->scalarString($label);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{rate_limit: ?int, remaining: ?int, reset: ?int, authenticated: bool}  $rate
+     */
+    protected function formatRateLimit(array $rate): string
+    {
+        if (!array_key_exists('remaining', $rate) || $rate['remaining'] === null) {
+            return 'n/a';
+        }
+
+        $auth = !empty($rate['authenticated']) ? 'auth' : 'anon';
+
+        return (string) $rate['remaining'] . '/' . (string) ($rate['rate_limit'] ?? '?') . ' (' . $auth . ')';
+    }
+
+    protected function scalarString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if ($value instanceof \BackedEnum) {
+            return (string) $value->value;
+        }
+
+        if (is_array($value)) {
+            $first = reset($value);
+
+            return is_scalar($first) || $first instanceof \BackedEnum
+                ? $this->scalarString($first)
+                : '';
+        }
+
+        return '';
     }
 }

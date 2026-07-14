@@ -58,35 +58,44 @@ class EggIndexService
     {
         $eggs = collect($this->allEggs($forceRefresh));
 
-        if ($q = trim((string) ($filters['q'] ?? ''))) {
+        $q = $this->filterString($filters['q'] ?? null);
+        if ($q !== '') {
             $needle = Str::lower($q);
             $eggs = $eggs->filter(function (array $egg) use ($needle) {
+                $tags = $egg['tags'] ?? [];
+                if (!is_array($tags)) {
+                    $tags = [];
+                }
+
                 $haystack = Str::lower(implode(' ', array_filter([
-                    $egg['name'] ?? '',
-                    $egg['slug'] ?? '',
-                    $egg['description'] ?? '',
-                    $egg['path'] ?? '',
-                    $egg['repository'] ?? '',
-                    $egg['category'] ?? '',
-                    implode(' ', $egg['tags'] ?? []),
+                    is_scalar($egg['name'] ?? null) ? (string) $egg['name'] : '',
+                    is_scalar($egg['slug'] ?? null) ? (string) $egg['slug'] : '',
+                    is_scalar($egg['description'] ?? null) ? (string) $egg['description'] : '',
+                    is_scalar($egg['path'] ?? null) ? (string) $egg['path'] : '',
+                    is_scalar($egg['repository'] ?? null) ? (string) $egg['repository'] : '',
+                    is_scalar($egg['category'] ?? null) ? (string) $egg['category'] : '',
+                    implode(' ', array_map(static fn ($tag) => is_scalar($tag) ? (string) $tag : '', $tags)),
                 ])));
 
                 return str_contains($haystack, $needle);
             });
         }
 
-        if ($repo = trim((string) ($filters['repository'] ?? ''))) {
-            $eggs = $eggs->filter(fn (array $egg) => strcasecmp($egg['repository'] ?? '', $repo) === 0);
+        $repo = $this->filterString($filters['repository'] ?? null);
+        if ($repo !== '') {
+            $eggs = $eggs->filter(fn (array $egg) => strcasecmp((string) ($egg['repository'] ?? ''), $repo) === 0);
         }
 
-        if ($category = trim((string) ($filters['category'] ?? ''))) {
-            $eggs = $eggs->filter(fn (array $egg) => strcasecmp($egg['category'] ?? '', $category) === 0);
+        $category = $this->filterString($filters['category'] ?? null);
+        if ($category !== '') {
+            $eggs = $eggs->filter(fn (array $egg) => strcasecmp((string) ($egg['category'] ?? ''), $category) === 0);
         }
 
-        if ($tag = trim((string) ($filters['tag'] ?? ''))) {
+        $tag = $this->filterString($filters['tag'] ?? null);
+        if ($tag !== '') {
             $eggs = $eggs->filter(function (array $egg) use ($tag) {
                 foreach ($egg['tags'] ?? [] as $eggTag) {
-                    if (strcasecmp((string) $eggTag, $tag) === 0) {
+                    if (is_scalar($eggTag) && strcasecmp((string) $eggTag, $tag) === 0) {
                         return true;
                     }
                 }
@@ -234,6 +243,25 @@ class EggIndexService
         $prefix = config('egg-browser.cache.prefix', 'egg-browser');
 
         return "{$prefix}:index:" . strtolower("{$owner}/{$name}@{$branch}");
+    }
+
+    protected function filterString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_array($value)) {
+            $first = reset($value);
+
+            return is_scalar($first) ? trim((string) $first) : '';
+        }
+
+        return '';
     }
 
     /**

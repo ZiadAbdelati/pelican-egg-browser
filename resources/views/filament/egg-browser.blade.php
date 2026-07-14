@@ -20,6 +20,8 @@
                     <x-filament::icon icon="tabler-packages" class="h-4 w-4" />
                     {{ __('egg-browser::strings.tabs.manage') }}
                 </button>
+            </div>
+        </div>
 
         <div class="p-4 sm:p-6">
             @if ($activeTab === 'browser')

@@ -12,6 +12,10 @@ return [
         'browser' => 'Browser',
         'manage' => 'Manage Eggs',
     ],
+
+    'browser' => [
+        'title' => 'Egg Browser',
+        'subtitle' => 'Discover and install eggs from official Pelican repositories.',
         'search' => 'Search eggs',
         'search_placeholder' => 'Name, game, path, tag…',
         'repository' => 'Repository',
@@ -71,14 +75,14 @@ return [
         'check_success' => 'Status: :status',
         'link_existing' => 'Link existing panel egg',
         'link_local' => 'Link installed eggs',
-        'link_local_help' => 'Match panel eggs to the catalog by UUID, update URL, or unique name.',
+        'link_local_help' => 'Match panel eggs that already have a GitHub update_url.',
         'actions' => 'Actions',
         'back' => 'Back to browser',
         'per_page' => 'Per page',
     ],
 
     'installed' => [
-        'title' => 'Tracked Eggs',
+        'title' => 'Manage Eggs',
         'subtitle' => 'Eggs installed or linked through Egg Browser. New imports with a GitHub update_url are tracked automatically.',
         'empty' => 'No eggs tracked yet. Install from the browser, or use Link installed eggs for older imports.',
         'source' => 'Source',

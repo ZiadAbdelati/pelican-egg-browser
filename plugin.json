@@ -11,6 +11,6 @@
     "panels": [
         "admin"
     ],
-    "panel_version": "^1.0.0",
+    "panel_version": null,
     "composer_packages": null
 }

@@ -9,7 +9,7 @@ Pelican Panel plugin for discovering, installing, and maintaining game-server eg
 | **Author** | community |
 | **License** | MIT |
 | **Panel** | Admin |
-| **Requires** | Pelican Panel `^1.0.0` |
+| **Requires** | Pelican Panel (incl. beta; `panel_version` unset) |
 
 Inspired by patterns used in official plugins on the [Pelican Hub marketplace](https://hub.pelican.dev/plugins) and the [pelican-dev/plugins](https://github.com/pelican-dev/plugins) repository.
 

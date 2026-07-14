@@ -2,14 +2,16 @@
 
 return [
     'navigation' => [
-        'group' => 'Eggs',
+        // Keep label for docs; page uses stock Eggs/Server group.
+        'group' => 'Server',
         'browser' => 'Egg Browser',
-        'installed' => 'Installed Eggs',
+        'installed' => 'Manage Eggs',
     ],
 
-    'browser' => [
-        'title' => 'Egg Browser',
-        'subtitle' => 'Discover and install eggs from official Pelican repositories.',
+    'tabs' => [
+        'browser' => 'Browser',
+        'manage' => 'Manage Eggs',
+    ],
         'search' => 'Search eggs',
         'search_placeholder' => 'Name, game, path, tag…',
         'repository' => 'Repository',

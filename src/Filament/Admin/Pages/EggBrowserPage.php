@@ -4,14 +4,19 @@ namespace Community\EggBrowser\Filament\Admin\Pages;
 
 use Community\EggBrowser\Enums\EggInstallStatus;
 use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
+use Community\EggBrowser\Jobs\CheckTrackedEggJob;
+use Community\EggBrowser\Models\TrackedEgg;
 use Community\EggBrowser\Services\EggIndexService;
 use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
+use Community\EggBrowser\Services\TrackedEggSyncService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
+use Illuminate\Support\Collection;
+use Livewire\Attributes\Url;
 use Throwable;
 
 class EggBrowserPage extends Page
@@ -20,9 +25,12 @@ class EggBrowserPage extends Page
 
     protected static ?string $slug = 'egg-browser';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 2;
 
     protected string $view = 'egg-browser::filament.egg-browser';
+
+    #[Url]
+    public string $activeTab = 'browser';
 
     public string $search = '';
 
@@ -58,7 +66,12 @@ class EggBrowserPage extends Page
 
     public function mount(): void
     {
+        if (!in_array($this->activeTab, ['browser', 'manage'], true)) {
+            $this->activeTab = 'browser';
+        }
+
         $this->statusOptions = $this->buildStatusOptions();
+        app(TrackedEggSyncService::class)->pruneOrphans();
         $this->reloadCatalog();
     }
 
@@ -74,7 +87,8 @@ class EggBrowserPage extends Page
 
     public static function getNavigationGroup(): ?string
     {
-        return (string) __('egg-browser::strings.navigation.group');
+        // Same group as stock Eggs resource.
+        return trans('admin/dashboard.server');
     }
 
     public static function canAccess(): bool
@@ -97,8 +111,84 @@ class EggBrowserPage extends Page
         return Width::Full;
     }
 
+    public function setActiveTab(string $tab): void
+    {
+        if (!in_array($tab, ['browser', 'manage'], true)) {
+            return;
+        }
+
+        $this->activeTab = $tab;
+
+        if ($tab === 'manage') {
+            app(TrackedEggSyncService::class)->pruneOrphans();
+        }
+    }
+
     protected function getHeaderActions(): array
     {
+        if ($this->activeTab === 'manage') {
+            return [
+                Action::make('checkAll')
+                    ->label((string) __('egg-browser::strings.browser.check_updates'))
+                    ->icon('tabler-cloud-search')
+                    ->action(function (): void {
+                        try {
+                            app(TrackedEggSyncService::class)->pruneOrphans();
+                            CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
+
+                            Notification::make()
+                                ->title((string) __('egg-browser::strings.notifications.check_done'))
+                                ->success()
+                                ->send();
+                        } catch (Throwable $e) {
+                            Notification::make()
+                                ->title((string) __('egg-browser::strings.notifications.error'))
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+                Action::make('linkLocal')
+                    ->label((string) __('egg-browser::strings.browser.link_local'))
+                    ->icon('tabler-link')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
+                    ->action(function (): void {
+                        try {
+                            app(TrackedEggSyncService::class)->pruneOrphans();
+                            $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
+
+                            $body = (string) __('egg-browser::strings.notifications.link_stats', [
+                                'local_total' => $result['stats']['local_total'] ?? 0,
+                                'local_untracked' => $result['stats']['local_untracked'] ?? 0,
+                                'catalog_total' => $result['stats']['catalog_total'] ?? 0,
+                                'matched' => $result['stats']['matched'] ?? 0,
+                            ]);
+                            if (!empty($result['errors'])) {
+                                $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
+                            }
+
+                            Notification::make()
+                                ->title((string) __('egg-browser::strings.notifications.link_done', [
+                                    'linked' => $result['linked'],
+                                    'checked' => $result['checked'],
+                                    'skipped' => $result['skipped'],
+                                ]))
+                                ->body($body)
+                                ->success()
+                                ->send();
+                        } catch (Throwable $e) {
+                            Notification::make()
+                                ->title((string) __('egg-browser::strings.notifications.error'))
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+            ];
+        }
+
         return [
             Action::make('refreshIndex')
                 ->label((string) __('egg-browser::strings.browser.refresh_index'))
@@ -123,50 +213,11 @@ class EggBrowserPage extends Page
                             ->send();
                     }
                 }),
-            Action::make('linkLocal')
-                ->label((string) __('egg-browser::strings.browser.link_local'))
-                ->icon('tabler-link')
-                ->color('gray')
-                ->requiresConfirmation()
-                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
-                ->action(function (): void {
-                    try {
-                        $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
-                        $this->reloadCatalog();
-
-                        $body = (string) __('egg-browser::strings.notifications.link_stats', [
-                            'local_total' => $result['stats']['local_total'] ?? 0,
-                            'local_untracked' => $result['stats']['local_untracked'] ?? 0,
-                            'catalog_total' => $result['stats']['catalog_total'] ?? 0,
-                            'matched' => $result['stats']['matched'] ?? 0,
-                        ]);
-                        if (!empty($result['errors'])) {
-                            $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
-                        }
-
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.link_done', [
-                                'linked' => $result['linked'],
-                                'checked' => $result['checked'],
-                                'skipped' => $result['skipped'],
-                            ]))
-                            ->body($body)
-                            ->success()
-                            ->send();
-                    } catch (Throwable $e) {
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.error'))
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
             Action::make('checkUpdates')
                 ->label((string) __('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
                 ->action(function (): void {
                     try {
-                        // Sync so last_checked_at updates without requiring a queue worker.
                         CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
                         $this->reloadCatalog();
 
@@ -224,6 +275,108 @@ class EggBrowserPage extends Page
         $encoded = rtrim(strtr(base64_encode($key), '+/', '-_'), '=');
 
         return EggBrowserDetailPage::getUrl(['key' => $encoded]);
+    }
+
+    public function trackedDetailUrl(TrackedEgg $tracked): string
+    {
+        return $this->detailUrl($tracked->sourceKey());
+    }
+
+    /**
+     * @return Collection<int, TrackedEgg>
+     */
+    public function getTrackedProperty(): Collection
+    {
+        return TrackedEgg::query()
+            ->orderByRaw("CASE status
+                WHEN 'update_available' THEN 0
+                WHEN 'local_changes_and_update' THEN 1
+                WHEN 'local_changes' THEN 2
+                WHEN 'check_failed' THEN 3
+                WHEN 'source_unavailable' THEN 4
+                WHEN 'unknown_unlinked' THEN 5
+                ELSE 6 END")
+            ->orderBy('egg_name')
+            ->get();
+    }
+
+    public function checkOne(int $id): void
+    {
+        CheckTrackedEggJob::dispatchSync($id);
+
+        $tracked = TrackedEgg::query()->find($id);
+        Notification::make()
+            ->title((string) __('egg-browser::strings.browser.check_success', [
+                'status' => $tracked?->statusEnum()->displayName() ?? 'unknown',
+            ]))
+            ->success()
+            ->send();
+    }
+
+    public function deleteEgg(int $trackedId): void
+    {
+        $tracked = TrackedEgg::query()->find($trackedId);
+        if (!$tracked) {
+            return;
+        }
+
+        try {
+            $egg = $tracked->egg_id ? \App\Models\Egg::query()->find($tracked->egg_id) : null;
+            if (!$egg && $tracked->egg_uuid) {
+                $egg = \App\Models\Egg::query()->where('uuid', $tracked->egg_uuid)->first();
+            }
+
+            $name = $egg?->name ?? $tracked->egg_name ?? "#{$trackedId}";
+
+            if ($egg) {
+                $egg->delete();
+            } else {
+                $tracked->delete();
+            }
+
+            Notification::make()
+                ->title((string) __('egg-browser::strings.installed.delete_success', ['name' => $name]))
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()
+                ->title((string) __('egg-browser::strings.notifications.error'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }
+
+    public function statusColor(string $status): string
+    {
+        return EggInstallStatus::tryFrom($status)?->color() ?? 'gray';
+    }
+
+    public function statusLabel(string $status): string
+    {
+        return EggInstallStatus::tryFrom($status)?->displayName() ?? $status;
+    }
+
+    public function statusBadgeClass(string $status): string
+    {
+        return match ($this->statusColor($status)) {
+            'success' => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-success-100 text-success-700 dark:bg-success-900 dark:text-success-300',
+            'warning' => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900 dark:text-warning-300',
+            'danger' => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-danger-100 text-danger-700 dark:bg-danger-900 dark:text-danger-300',
+            'info' => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-info-100 text-info-700 dark:bg-info-900 dark:text-info-300',
+            default => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+        };
+    }
+
+    public function cardStatusBadgeClass(string $color): string
+    {
+        return match ($color) {
+            'success' => 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success-100 text-success-700 dark:bg-success-900 dark:text-success-300',
+            'warning' => 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900 dark:text-warning-300',
+            'danger' => 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-danger-100 text-danger-700 dark:bg-danger-900 dark:text-danger-300',
+            'info' => 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info-100 text-info-700 dark:bg-info-900 dark:text-info-300',
+            default => 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+        };
     }
 
     public function reloadCatalog(bool $forceRefresh = false): void

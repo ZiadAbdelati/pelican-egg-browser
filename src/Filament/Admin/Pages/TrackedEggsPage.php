@@ -19,6 +19,8 @@ class TrackedEggsPage extends Page
 {
     protected static string|\BackedEnum|null $navigationIcon = 'tabler-packages';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $slug = 'egg-browser-installed';
 
     protected static ?int $navigationSort = 4;

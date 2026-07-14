@@ -6,6 +6,7 @@ use App\Models\Role;
 use Community\EggBrowser\Console\Commands\CheckEggUpdatesCommand;
 use Community\EggBrowser\Console\Commands\LinkLocalEggsCommand;
 use Community\EggBrowser\Console\Commands\RefreshEggIndexCommand;
+use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Services\EggIndexService;
 use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggManifestService;

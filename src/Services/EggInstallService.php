@@ -20,6 +20,8 @@ class EggInstallService
         protected EggStatusService $status,
         protected EggNormalizer $normalizer,
         protected RepositoryConfigService $repositories,
+        protected EggMatcherService $matcher,
+        protected EggIndexService $index,
     ) {}
 
     /**
@@ -171,6 +173,83 @@ class EggInstallService
                 'status' => $status->value,
                 'last_error' => null,
                 'last_checked_at' => now(),
+                'last_installed_at' => now(),
+            ]
+        );
+    }
+
+    /**
+     * Discover panel eggs that match the catalog and create tracking rows.
+     *
+     * @return array{linked: int, checked: int, skipped: int, errors: list<string>}
+     */
+    public function linkLocalMatches(bool $checkUpstream = true): array
+    {
+        $this->matcher->forget();
+        $catalog = $this->index->allEggs(forceRefresh: false);
+        $matches = $this->matcher->matchCatalog($catalog);
+
+        $linked = 0;
+        $checked = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($matches as $match) {
+            /** @var \App\Models\Egg $egg */
+            $egg = $match['egg'];
+            $catalogEgg = $match['catalog'];
+
+            $existing = TrackedEgg::query()
+                ->where('source_owner', $catalogEgg['owner'] ?? '')
+                ->where('source_repo', $catalogEgg['repo'] ?? '')
+                ->where('source_path', $catalogEgg['path'] ?? '')
+                ->first();
+
+            if ($existing && (int) $existing->egg_id === (int) $egg->id) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                if ($checkUpstream) {
+                    $this->linkExisting($egg, $catalogEgg);
+                    $checked++;
+                } else {
+                    $this->linkExistingLightweight($egg, $catalogEgg);
+                }
+                $linked++;
+            } catch (\Throwable $e) {
+                $errors[] = ($egg->name ?? 'egg') . ': ' . $e->getMessage();
+            }
+        }
+
+        $this->matcher->forget();
+
+        return compact('linked', 'checked', 'skipped', 'errors');
+    }
+
+    /**
+     * Create a tracking row without fetching upstream (status stays unknown_unlinked until checked).
+     *
+     * @param  array<string, mixed>  $catalogEgg
+     */
+    public function linkExistingLightweight(Egg $egg, array $catalogEgg): TrackedEgg
+    {
+        return TrackedEgg::query()->updateOrCreate(
+            [
+                'source_owner' => $catalogEgg['owner'],
+                'source_repo' => $catalogEgg['repo'],
+                'source_path' => $catalogEgg['path'],
+            ],
+            [
+                'egg_id' => $egg->id,
+                'source_branch' => $catalogEgg['branch'] ?? 'main',
+                'source_sha' => $catalogEgg['tree_sha'] ?? null,
+                'source_blob_sha' => $catalogEgg['blob_sha'] ?? null,
+                'egg_uuid' => $egg->uuid,
+                'egg_name' => $egg->name,
+                'status' => EggInstallStatus::UnknownUnlinked->value,
+                'last_error' => null,
                 'last_installed_at' => now(),
             ]
         );

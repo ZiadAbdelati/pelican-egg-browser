@@ -6,11 +6,13 @@ use Community\EggBrowser\Enums\EggInstallStatus;
 use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Jobs\CheckTrackedEggJob;
 use Community\EggBrowser\Models\TrackedEgg;
+use Community\EggBrowser\Services\EggInstallService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
 use Illuminate\Support\Collection;
+use Throwable;
 
 class TrackedEggsPage extends Page
 {
@@ -24,17 +26,17 @@ class TrackedEggsPage extends Page
 
     public function getTitle(): string
     {
-        return trans('egg-browser::strings.installed.title');
+        return (string) __('egg-browser::strings.installed.title');
     }
 
     public static function getNavigationLabel(): string
     {
-        return trans('egg-browser::strings.navigation.installed');
+        return (string) __('egg-browser::strings.navigation.installed');
     }
 
     public static function getNavigationGroup(): ?string
     {
-        return trans('egg-browser::strings.navigation.group');
+        return (string) __('egg-browser::strings.navigation.group');
     }
 
     public static function canAccess(): bool
@@ -50,18 +52,45 @@ class TrackedEggsPage extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('linkLocal')
+                ->label((string) __('egg-browser::strings.installed.link_local'))
+                ->icon('tabler-link')
+                ->color('primary')
+                ->requiresConfirmation()
+                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
+                ->action(function (): void {
+                    try {
+                        $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
+
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.link_done', [
+                                'linked' => $result['linked'],
+                                'checked' => $result['checked'],
+                                'skipped' => $result['skipped'],
+                            ]))
+                            ->body(!empty($result['errors']) ? implode("\n", array_slice($result['errors'], 0, 5)) : null)
+                            ->success()
+                            ->send();
+                    } catch (Throwable $e) {
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.error'))
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
             Action::make('checkAll')
-                ->label(trans('egg-browser::strings.browser.check_updates'))
+                ->label((string) __('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
-                ->action(function () {
+                ->action(function (): void {
                     CheckAllTrackedEggsJob::dispatch(refreshIndex: true);
                     Notification::make()
-                        ->title(trans('egg-browser::strings.notifications.check_queued'))
+                        ->title((string) __('egg-browser::strings.notifications.check_queued'))
                         ->success()
                         ->send();
                 }),
             Action::make('browser')
-                ->label(trans('egg-browser::strings.navigation.browser'))
+                ->label((string) __('egg-browser::strings.navigation.browser'))
                 ->url(EggBrowserPage::getUrl())
                 ->icon('tabler-egg')
                 ->color('gray'),
@@ -80,7 +109,8 @@ class TrackedEggsPage extends Page
                 WHEN 'local_changes' THEN 2
                 WHEN 'check_failed' THEN 3
                 WHEN 'source_unavailable' THEN 4
-                ELSE 5 END")
+                WHEN 'unknown_unlinked' THEN 5
+                ELSE 6 END")
             ->orderBy('egg_name')
             ->get();
     }
@@ -91,7 +121,7 @@ class TrackedEggsPage extends Page
 
         $tracked = TrackedEgg::query()->find($id);
         Notification::make()
-            ->title(trans('egg-browser::strings.browser.check_success', [
+            ->title((string) __('egg-browser::strings.browser.check_success', [
                 'status' => $tracked?->statusEnum()->displayName() ?? 'unknown',
             ]))
             ->success()

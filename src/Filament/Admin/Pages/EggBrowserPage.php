@@ -5,6 +5,7 @@ namespace Community\EggBrowser\Filament\Admin\Pages;
 use Community\EggBrowser\Enums\EggInstallStatus;
 use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Services\EggIndexService;
+use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Filament\Actions\Action;
@@ -112,6 +113,34 @@ class EggBrowserPage extends Page
 
                         Notification::make()
                             ->title((string) __('egg-browser::strings.notifications.index_refreshed'))
+                            ->success()
+                            ->send();
+                    } catch (Throwable $e) {
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.error'))
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
+            Action::make('linkLocal')
+                ->label((string) __('egg-browser::strings.browser.link_local'))
+                ->icon('tabler-link')
+                ->color('primary')
+                ->requiresConfirmation()
+                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
+                ->action(function (): void {
+                    try {
+                        $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
+                        $this->reloadCatalog();
+
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.link_done', [
+                                'linked' => $result['linked'],
+                                'checked' => $result['checked'],
+                                'skipped' => $result['skipped'],
+                            ]))
+                            ->body(!empty($result['errors']) ? implode("\n", array_slice($result['errors'], 0, 5)) : null)
                             ->success()
                             ->send();
                     } catch (Throwable $e) {

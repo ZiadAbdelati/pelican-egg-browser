@@ -17,6 +17,7 @@ class EggStatusService
         protected EggManifestService $manifests,
         protected EggNormalizer $normalizer,
         protected EggExporterService $exporter,
+        protected EggMatcherService $matcher,
     ) {}
 
     /**
@@ -66,6 +67,21 @@ class EggStatusService
                 ];
             }
 
+            // Detect eggs already present in the panel (imported outside this plugin).
+            $localEgg = $this->matcher->findLocalEgg($catalogEgg, includeTracked: false);
+            if ($localEgg) {
+                return [
+                    'status' => EggInstallStatus::UnknownUnlinked,
+                    'tracked' => null,
+                    'local_egg' => $localEgg,
+                    'upstream_fingerprint' => null,
+                    'installed_fingerprint' => null,
+                    'current_fingerprint' => null,
+                    'upstream_parsed' => null,
+                    'error' => null,
+                ];
+            }
+
             return [
                 'status' => EggInstallStatus::NotInstalled,
                 'tracked' => null,
@@ -95,7 +111,7 @@ class EggStatusService
         if ($localEgg && !$tracked) {
             return [
                 'status' => EggInstallStatus::UnknownUnlinked,
-                'tracked' => null,
+                'tracked' => $tracked,
                 'local_egg' => $localEgg,
                 'upstream_fingerprint' => null,
                 'installed_fingerprint' => null,
@@ -300,7 +316,11 @@ class EggStatusService
             }
         }
 
-        // Best-effort match by UUID from catalog metadata if present.
+        $matched = $this->matcher->findLocalEgg($catalogEgg, includeTracked: true);
+        if ($matched) {
+            return $matched;
+        }
+
         if (!empty($catalogEgg['uuid'])) {
             return Egg::query()->where('uuid', $catalogEgg['uuid'])->first();
         }

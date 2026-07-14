@@ -4,11 +4,12 @@ namespace Community\EggBrowser\Providers;
 
 use App\Models\Role;
 use Community\EggBrowser\Console\Commands\CheckEggUpdatesCommand;
+use Community\EggBrowser\Console\Commands\LinkLocalEggsCommand;
 use Community\EggBrowser\Console\Commands\RefreshEggIndexCommand;
-use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Services\EggIndexService;
 use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggManifestService;
+use Community\EggBrowser\Services\EggMatcherService;
 use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Community\EggBrowser\Services\RepositoryConfigService;
@@ -35,6 +36,7 @@ class EggBrowserPluginProvider extends ServiceProvider
         $this->app->singleton(RepositoryConfigService::class);
         $this->app->singleton(EggPathMatcher::class);
         $this->app->singleton(EggNormalizer::class);
+        $this->app->singleton(EggMatcherService::class);
         $this->app->singleton(EggIndexService::class);
         $this->app->singleton(EggManifestService::class);
         $this->app->singleton(EggStatusService::class);
@@ -47,6 +49,7 @@ class EggBrowserPluginProvider extends ServiceProvider
             $this->commands([
                 RefreshEggIndexCommand::class,
                 CheckEggUpdatesCommand::class,
+                LinkLocalEggsCommand::class,
             ]);
         }
 

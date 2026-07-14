@@ -59,6 +59,8 @@ return [
         'update_success' => 'Egg ":name" updated successfully.',
         'check_success' => 'Status: :status',
         'link_existing' => 'Link existing panel egg',
+        'link_local' => 'Link installed eggs',
+        'link_local_help' => 'Match panel eggs to the catalog by UUID, update URL, or unique name.',
         'actions' => 'Actions',
         'back' => 'Back to browser',
         'per_page' => 'Per page',
@@ -66,12 +68,13 @@ return [
 
     'installed' => [
         'title' => 'Tracked Eggs',
-        'subtitle' => 'Eggs installed or linked through Egg Browser.',
-        'empty' => 'No eggs tracked yet. Install one from the browser.',
+        'subtitle' => 'Eggs installed or linked through Egg Browser. Use “Link installed eggs” to pick up eggs imported before this plugin.',
+        'empty' => 'No eggs tracked yet. Install from the browser, or link eggs already in the panel.',
         'source' => 'Source',
         'last_checked' => 'Last checked',
         'check' => 'Check',
         'open_detail' => 'Open in browser',
+        'link_local' => 'Link installed eggs',
     ],
 
     'status' => [
@@ -121,6 +124,7 @@ return [
         'index_refreshed' => 'Repository index refreshed',
         'check_queued' => 'Update check queued',
         'check_done' => 'Update check finished',
+        'link_done' => 'Linked :linked eggs (:checked checked, :skipped already tracked)',
         'error' => 'Something went wrong',
     ],
 ];

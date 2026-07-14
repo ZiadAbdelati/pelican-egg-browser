@@ -153,6 +153,16 @@ class TrackedEggsPage extends Page
                 'status' => $tracked?->statusEnum()->displayName() ?? 'unknown',
             ]))
             ->success()
+            ->send();
+    }
+
+    public function detailUrl(TrackedEgg $tracked): string
+    {
+        $encoded = rtrim(strtr(base64_encode($tracked->sourceKey()), '+/', '-_'), '=');
+
+        return EggBrowserDetailPage::getUrl(['key' => $encoded]);
+    }
+
     public function statusColor(string $status): string
     {
         return EggInstallStatus::tryFrom($status)?->color() ?? 'gray';
@@ -172,15 +182,5 @@ class TrackedEggsPage extends Page
             'info' => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-info-100 text-info-700 dark:bg-info-900 dark:text-info-300',
             default => 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
         };
-    }
-
-    public function statusColor(string $status): string
-    {
-        return EggInstallStatus::tryFrom($status)?->color() ?? 'gray';
-    }
-
-    public function statusLabel(string $status): string
-    {
-        return EggInstallStatus::tryFrom($status)?->displayName() ?? $status;
     }
 }

@@ -126,7 +126,7 @@ class EggBrowserPage extends Page
             Action::make('linkLocal')
                 ->label((string) __('egg-browser::strings.browser.link_local'))
                 ->icon('tabler-link')
-                ->color('primary')
+                ->color('gray')
                 ->requiresConfirmation()
                 ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
                 ->action(function (): void {

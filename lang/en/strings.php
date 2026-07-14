@@ -56,6 +56,7 @@ return [
         'diff_upstream' => 'Upstream',
         'diff_identical' => 'Local content matches upstream after normalization.',
         'diff_complex' => 'Section differs (see raw comparison below).',
+        'diff_legend' => 'Left = your panel egg, right = GitHub source. Export noise (tags, update_url, format version) is ignored for status.',
         'raw_compare' => 'Unified raw comparison',
         'unified_diff_help' => '− local only, + upstream only, unmarked lines are shared. Content is normalized for comparison.',
         'local_changes_note' => 'Local egg differs from the last install/link snapshot.',
@@ -76,13 +77,16 @@ return [
 
     'installed' => [
         'title' => 'Tracked Eggs',
-        'subtitle' => 'Eggs installed or linked through Egg Browser. Use “Link installed eggs” to pick up eggs imported before this plugin.',
-        'empty' => 'No eggs tracked yet. Install from the browser, or link eggs already in the panel.',
+        'subtitle' => 'Eggs installed or linked through Egg Browser. New imports with a GitHub update_url are tracked automatically.',
+        'empty' => 'No eggs tracked yet. Install from the browser, or use Link installed eggs for older imports.',
         'source' => 'Source',
         'last_checked' => 'Last checked',
         'check' => 'Check',
         'open_detail' => 'Open in browser',
         'link_local' => 'Link installed eggs',
+        'delete' => 'Delete',
+        'delete_confirm' => 'Delete this panel egg and its tracking row? Servers using the egg must be removed first.',
+        'delete_success' => 'Deleted egg ":name".',
     ],
 
     'status' => [

@@ -59,10 +59,30 @@ class TrackedEggsPage extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('checkAll')
+                ->label((string) __('egg-browser::strings.browser.check_updates'))
+                ->icon('tabler-cloud-search')
+                ->action(function (): void {
+                    try {
+                        app(TrackedEggSyncService::class)->pruneOrphans();
+                        CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
+
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.check_done'))
+                            ->success()
+                            ->send();
+                    } catch (Throwable $e) {
+                        Notification::make()
+                            ->title((string) __('egg-browser::strings.notifications.error'))
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
             Action::make('linkLocal')
                 ->label((string) __('egg-browser::strings.installed.link_local'))
                 ->icon('tabler-link')
-                ->color('primary')
+                ->color('gray')
                 ->requiresConfirmation()
                 ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
                 ->action(function (): void {
@@ -87,26 +107,6 @@ class TrackedEggsPage extends Page
                                 'skipped' => $result['skipped'],
                             ]))
                             ->body($body)
-                            ->success()
-                            ->send();
-                    } catch (Throwable $e) {
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.error'))
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
-            Action::make('checkAll')
-                ->label((string) __('egg-browser::strings.browser.check_updates'))
-                ->icon('tabler-cloud-search')
-                ->action(function (): void {
-                    try {
-                        app(TrackedEggSyncService::class)->pruneOrphans();
-                        CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
-
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.check_done'))
                             ->success()
                             ->send();
                     } catch (Throwable $e) {
@@ -154,6 +154,41 @@ class TrackedEggsPage extends Page
             ]))
             ->success()
             ->send();
+    }
+
+    public function deleteEgg(int $trackedId): void
+    {
+        $tracked = TrackedEgg::query()->find($trackedId);
+        if (!$tracked) {
+            return;
+        }
+
+        try {
+            $egg = $tracked->egg_id ? \App\Models\Egg::query()->find($tracked->egg_id) : null;
+            if (!$egg && $tracked->egg_uuid) {
+                $egg = \App\Models\Egg::query()->where('uuid', $tracked->egg_uuid)->first();
+            }
+
+            $name = $egg?->name ?? $tracked->egg_name ?? "#{$trackedId}";
+
+            if ($egg) {
+                // Egg model blocks delete when servers still use it.
+                $egg->delete();
+            } else {
+                $tracked->delete();
+            }
+
+            Notification::make()
+                ->title((string) __('egg-browser::strings.installed.delete_success', ['name' => $name]))
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()
+                ->title((string) __('egg-browser::strings.notifications.error'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
     }
 
     public function detailUrl(TrackedEgg $tracked): string

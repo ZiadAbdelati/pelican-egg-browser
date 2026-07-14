@@ -26,7 +26,7 @@
                             <tr wire:key="tracked-{{ $row->id }}" class="hover:bg-gray-50/70 dark:hover:bg-gray-900/40">
                                 <td class="px-4 py-3">
                                     <a href="{{ $detailUrl }}" class="group block">
-                                        <div class="font-medium text-primary-600 group-hover:underline dark:text-primary-400">
+                                        <div class="font-medium text-gray-900 group-hover:underline dark:text-white">
                                             {{ $row->egg_name ?? ('#' . $row->egg_id) }}
                                         </div>
                                         <div class="font-mono text-xs text-gray-400">{{ $row->egg_uuid }}</div>
@@ -34,7 +34,7 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     <a href="{{ $detailUrl }}" class="block hover:opacity-80">
-                                        <div class="font-mono text-xs">
+                                        <div class="font-mono text-xs text-gray-700 dark:text-gray-300">
                                             {{ $row->source_owner }}/{{ $row->source_repo }}
                                         </div>
                                         <div class="truncate font-mono text-[11px] text-gray-400" title="{{ $row->source_path }}">
@@ -60,16 +60,18 @@
                                         <button
                                             type="button"
                                             wire:click="checkOne({{ $row->id }})"
-                                            class="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900"
+                                            class="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
                                         >
                                             {{ trans('egg-browser::strings.installed.check') }}
                                         </button>
-                                        <a
-                                            href="{{ $detailUrl }}"
-                                            class="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900"
+                                        <button
+                                            type="button"
+                                            wire:click="deleteEgg({{ $row->id }})"
+                                            wire:confirm="{{ __('egg-browser::strings.installed.delete_confirm') }}"
+                                            class="rounded-lg border border-danger-300 px-2 py-1 text-xs text-danger-700 hover:bg-danger-50 dark:border-danger-700 dark:text-danger-300 dark:hover:bg-danger-950"
                                         >
-                                            {{ trans('egg-browser::strings.installed.open_detail') }}
-                                        </a>
+                                            {{ __('egg-browser::strings.installed.delete') }}
+                                        </button>
                                     </div>
                                 </td>
                             </tr>

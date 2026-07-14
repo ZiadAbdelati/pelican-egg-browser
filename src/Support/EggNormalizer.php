@@ -27,7 +27,7 @@ class EggNormalizer
         'install_script',
         'features',
         'file_denylist',
-        'tags',
+        // tags intentionally omitted from status-driving section list
     ];
 
     /**
@@ -43,17 +43,18 @@ class EggNormalizer
             'author' => (string) Arr::get($egg, 'author', ''),
             'description' => $this->normalizeText(Arr::get($egg, 'description')),
             'uuid' => Arr::get($egg, 'uuid'),
+            // Tags are panel/plugin bookkeeping, not upstream content.
             'tags' => $this->normalizeStringList(Arr::get($egg, 'tags', [])),
             'features' => $this->normalizeStringList(Arr::get($egg, 'features', [])),
             'docker_images' => $this->normalizeAssoc(Arr::get($egg, 'docker_images', [])),
             'file_denylist' => $this->normalizeStringList(Arr::get($egg, 'file_denylist', [])),
             'startup_commands' => $this->normalizeStartup(Arr::get($egg, 'startup_commands'), Arr::get($egg, 'startup')),
-            'config' => [
+            'config' => $this->normalizePlaceholders([
                 'files' => $this->normalizeJsonish(Arr::get($egg, 'config.files')),
                 'startup' => $this->normalizeJsonish(Arr::get($egg, 'config.startup')),
                 'logs' => $this->normalizeJsonish(Arr::get($egg, 'config.logs')),
                 'stop' => Arr::get($egg, 'config.stop'),
-            ],
+            ]),
             'scripts' => [
                 'installation' => [
                     'script' => $this->normalizeText(Arr::get($egg, 'scripts.installation.script')),
@@ -61,12 +62,11 @@ class EggNormalizer
                     'entrypoint' => Arr::get($egg, 'scripts.installation.entrypoint'),
                 ],
             ],
-            'variables' => $this->normalizeVariables(Arr::get($egg, 'variables', [])),
+            'variables' => $this->normalizePlaceholders($this->normalizeVariables(Arr::get($egg, 'variables', []))),
+            // Kept for display diffs only; fingerprint() strips meta/tags.
             'meta' => [
                 'version' => Arr::get($egg, 'meta.version'),
-                // Treat missing/blank update_url as equivalent so empty local fields
-                // don't create false "metadata changed" vs upstream null.
-                'update_url' => $this->normalizeNullableString(
+                'update_url' => $this->normalizeUpdateUrl(
                     Arr::get($egg, 'meta.update_url') ?? Arr::get($egg, 'update_url')
                 ),
             ],
@@ -76,14 +76,20 @@ class EggNormalizer
     }
 
     /**
+     * Content hash for status comparison.
+     *
+     * Intentionally ignores:
+     * - uuid (identity)
+     * - tags (plugin/panel labeling)
+     * - meta.version / meta.update_url (export format + panel updater fields)
+     *
      * @param  array<array-key, mixed>  $egg
      */
     public function fingerprint(array $egg): string
     {
         $normalized = $this->normalize($egg);
 
-        // UUID is identity, not content — exclude so re-import with same UUID doesn't mask content drift.
-        unset($normalized['uuid']);
+        unset($normalized['uuid'], $normalized['tags'], $normalized['meta']);
 
         return hash('sha256', json_encode($normalized, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
@@ -103,7 +109,6 @@ class EggNormalizer
                 'name' => $n['name'],
                 'author' => $n['author'],
                 'description' => $n['description'],
-                'meta' => $n['meta'],
             ],
             'startup' => $n['startup_commands'],
             'docker_images' => $n['docker_images'],
@@ -155,7 +160,8 @@ class EggNormalizer
     public function pretty(array $egg): string
     {
         $normalized = $this->normalize($egg);
-        unset($normalized['uuid']);
+        // Match fingerprint content so raw compare reflects status-driving fields.
+        unset($normalized['uuid'], $normalized['tags'], $normalized['meta']);
 
         return json_encode(
             $normalized,
@@ -312,6 +318,50 @@ class EggNormalizer
         $text = trim((string) $value);
 
         return $text === '' ? null : $text;
+    }
+
+    /**
+     * Normalize panel export placeholder variants and GitHub URL shape noise.
+     */
+    protected function normalizeUpdateUrl(mixed $value): ?string
+    {
+        $url = $this->normalizeNullableString($value);
+        if ($url === null) {
+            return null;
+        }
+
+        // Collapse refs/heads|tags so panel-written and official raw URLs match.
+        $url = preg_replace('#/refs/(?:heads|tags)/#i', '/', $url) ?? $url;
+
+        return rtrim($url, '/');
+    }
+
+    /**
+     * Panel exports rewrite {{server.build.env.X}} to {{server.environment.X}}.
+     * Treat them as equivalent for status fingerprints/diffs.
+     *
+     * @param  mixed  $value
+     * @return mixed
+     */
+    protected function normalizePlaceholders(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            $value = str_replace('{{server.build.env.', '{{server.environment.', $value);
+            $value = str_replace('{{server.build.', '{{server.environment.', $value);
+
+            return $value;
+        }
+
+        if (is_array($value)) {
+            $out = [];
+            foreach ($value as $key => $item) {
+                $out[$key] = $this->normalizePlaceholders($item);
+            }
+
+            return $out;
+        }
+
+        return $value;
     }
 
     /**

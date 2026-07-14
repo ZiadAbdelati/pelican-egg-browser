@@ -270,8 +270,22 @@ class EggBrowserDetailPage extends Page
                 }
 
                 if ($this->localPrettyJson !== '' && $this->upstreamPrettyJson !== '') {
-                    $this->unifiedDiff = app(\Community\EggBrowser\Support\TextDiff::class)
-                        ->unifiedText($this->localPrettyJson, $this->upstreamPrettyJson);
+                    $diffHelper = app(\Community\EggBrowser\Support\TextDiff::class);
+                    $rows = $diffHelper->unifiedLines($this->localPrettyJson, $this->upstreamPrettyJson);
+                    $this->unifiedDiffRows = array_map(static function (array $row): array {
+                        $tag = $row['tag'] ?? 'equal';
+
+                        return [
+                            'tag' => $tag,
+                            'text' => (string) ($row['text'] ?? ''),
+                            'class' => match ($tag) {
+                                'add' => 'bg-emerald-950/60 text-emerald-200',
+                                'remove' => 'bg-rose-950/60 text-rose-200',
+                                default => 'text-gray-300',
+                            },
+                        ];
+                    }, $rows);
+                    $this->unifiedDiff = $diffHelper->unifiedText($this->localPrettyJson, $this->upstreamPrettyJson);
                 }
 
                 $installed = $result['installed_fingerprint'] ?? null;

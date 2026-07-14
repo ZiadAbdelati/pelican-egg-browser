@@ -10,7 +10,7 @@
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 class="text-xl font-bold text-gray-900 dark:text-white">
-                        {{ $catalogEgg['name'] ?? $catalogEgg['slug'] }}
+                        {{ $catalogEgg['name'] ?? $catalogEgg['slug'] ?? 'Egg' }}
                     </h2>
                     <div class="mt-1 flex flex-wrap gap-2 text-sm text-gray-500">
                         <span>{{ $catalogEgg['repository'] ?? '' }}</span>
@@ -164,11 +164,11 @@
                                                             <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
                                                                 <div>
                                                                     <div class="mb-0.5 text-[11px] uppercase text-gray-400">{{ __('egg-browser::strings.browser.diff_local') }}</div>
-                                                                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-rose-50 p-2 text-[11px] text-rose-900 dark:bg-rose-950 dark:text-rose-100">{{ $this->formatDiffValue($field['left']) }}</pre>
+                                                                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-rose-50 p-2 text-[11px] text-rose-900 dark:bg-rose-950 dark:text-rose-100">{{ $this->formatDiffValue($field['left'] ?? null) }}</pre>
                                                                 </div>
                                                                 <div>
                                                                     <div class="mb-0.5 text-[11px] uppercase text-gray-400">{{ __('egg-browser::strings.browser.diff_upstream') }}</div>
-                                                                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-emerald-50 p-2 text-[11px] text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{{ $this->formatDiffValue($field['right']) }}</pre>
+                                                                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-emerald-50 p-2 text-[11px] text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{{ $this->formatDiffValue($field['right'] ?? null) }}</pre>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -188,27 +188,32 @@
                 </div>
             @endif
 
-            @if ($unifiedDiff !== '' || $localPrettyJson !== '' || $upstreamPrettyJson !== '' || $rawJson)
+            @if (!empty($unifiedDiffRows) || $localPrettyJson !== '' || $upstreamPrettyJson !== '' || $rawJson)
                 <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                     <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                         {{ __('egg-browser::strings.browser.raw_compare') }}
                     </h3>
 
-                    @if ($unifiedDiff !== '')
+                    @if (!empty($unifiedDiffRows))
                         <div class="mb-2 text-xs text-gray-500">
                             {{ __('egg-browser::strings.browser.unified_diff_help') }}
                         </div>
-                        <pre class="max-h-[32rem] overflow-auto rounded-lg bg-gray-950 p-3 font-mono text-xs leading-5 text-gray-100"><code>@foreach (preg_split("/\r\n|\n|\r/", $unifiedDiff) as $line)
-@php
-    $cls = 'text-gray-300';
-    if (str_starts_with($line, '+ ')) {
-        $cls = 'bg-emerald-950/60 text-emerald-200';
-    } elseif (str_starts_with($line, '- ')) {
-        $cls = 'bg-rose-950/60 text-rose-200';
-    }
-@endphp
-<span class="block whitespace-pre-wrap break-all {{ $cls }}">{{ $line === '' ? ' ' : $line }}</span>
-@endforeach</code></pre>
+                        <div class="max-h-[32rem] overflow-auto rounded-lg bg-gray-950 p-3 font-mono text-xs leading-5">
+                            @foreach ($unifiedDiffRows as $row)
+                                @php
+                                    $prefix = match ($row['tag'] ?? 'equal') {
+                                        'add' => '+ ',
+                                        'remove' => '- ',
+                                        default => '  ',
+                                    };
+                                    $line = $prefix . ($row['text'] ?? '');
+                                @endphp
+                                <div @class([
+                                    'block whitespace-pre-wrap break-all',
+                                    $row['class'] ?? 'text-gray-300',
+                                ])>{{ $line === '' ? ' ' : $line }}</div>
+                            @endforeach
+                        </div>
                     @elseif ($localPrettyJson !== '' && $upstreamPrettyJson !== '')
                         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
                             <div>

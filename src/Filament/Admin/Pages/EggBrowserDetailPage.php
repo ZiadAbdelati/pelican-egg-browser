@@ -49,8 +49,16 @@ class EggBrowserDetailPage extends Page
 
     public ?int $trackedId = null;
 
-    /** @var array<string, array{changed: bool, left: mixed, right: mixed}> */
+    /** @var array<string, array{changed: bool, left: mixed, right: mixed, fields?: list<array{path: string, left: mixed, right: mixed}>}> */
     public array $diff = [];
+
+    public string $localPrettyJson = '';
+
+    public string $upstreamPrettyJson = '';
+
+    public bool $hasLocalChanges = false;
+
+    public bool $hasUpstreamDiff = false;
 
     /** @var list<string> */
     public array $installTags = [];

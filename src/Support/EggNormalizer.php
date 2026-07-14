@@ -123,7 +123,7 @@ class EggNormalizer
     /**
      * @param  array<array-key, mixed>  $left
      * @param  array<array-key, mixed>  $right
-     * @return array<string, array{changed: bool, left: mixed, right: mixed}>
+     * @return array<string, array{changed: bool, left: mixed, right: mixed, fields: list<array{path: string, left: mixed, right: mixed}>}>
      */
     public function diffSections(array $left, array $right): array
     {
@@ -134,14 +134,80 @@ class EggNormalizer
         foreach (self::DIFF_SECTIONS as $section) {
             $l = $leftSections[$section] ?? null;
             $r = $rightSections[$section] ?? null;
+            $changed = $this->encode($l) !== $this->encode($r);
+
             $diff[$section] = [
-                'changed' => $this->encode($l) !== $this->encode($r),
+                'changed' => $changed,
                 'left' => $l,
                 'right' => $r,
+                'fields' => $changed ? $this->flattenDiff($l, $r) : [],
             ];
         }
 
         return $diff;
+    }
+
+    /**
+     * Pretty JSON for side-by-side raw comparison.
+     *
+     * @param  array<array-key, mixed>  $egg
+     */
+    public function pretty(array $egg): string
+    {
+        $normalized = $this->normalize($egg);
+        unset($normalized['uuid']);
+
+        return json_encode(
+            $normalized,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+    }
+
+    /**
+     * @return list<array{path: string, left: mixed, right: mixed}>
+     */
+    protected function flattenDiff(mixed $left, mixed $right, string $prefix = ''): array
+    {
+        $out = [];
+
+        if (is_array($left) && is_array($right)) {
+            $keys = array_values(array_unique(array_merge(array_keys($left), array_keys($right))));
+            sort($keys);
+
+            foreach ($keys as $key) {
+                $path = $prefix === '' ? (string) $key : $prefix . '.' . $key;
+                $hasLeft = array_key_exists($key, $left);
+                $hasRight = array_key_exists($key, $right);
+
+                if ($hasLeft && $hasRight) {
+                    if (is_array($left[$key]) && is_array($right[$key])) {
+                        $out = array_merge($out, $this->flattenDiff($left[$key], $right[$key], $path));
+                    } elseif ($this->encode($left[$key]) !== $this->encode($right[$key])) {
+                        $out[] = [
+                            'path' => $path,
+                            'left' => $left[$key],
+                            'right' => $right[$key],
+                        ];
+                    }
+                } elseif ($hasLeft) {
+                    $out[] = ['path' => $path, 'left' => $left[$key], 'right' => null];
+                } else {
+                    $out[] = ['path' => $path, 'left' => null, 'right' => $right[$key]];
+                }
+            }
+
+            return $out;
+        }
+
+        if ($this->encode($left) !== $this->encode($right)) {
+            $out[] = [
+                'path' => $prefix === '' ? '(root)' : $prefix,
+                'left' => $left,
+                'right' => $right,
+            ];
+        }
+
+        return $out;
     }
 
     /**

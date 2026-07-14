@@ -159,9 +159,20 @@ class RepositoryConfigService
      */
     protected function parseExtraEnvList(): array
     {
-        $raw = (string) config('egg-browser.extra_repositories', '');
-        if (is_array(config('egg-browser.extra_repositories'))) {
-            $raw = implode(',', config('egg-browser.extra_repositories'));
+        $value = config('egg-browser.extra_repositories', []);
+
+        if (is_array($value)) {
+            $raw = implode("\n", array_map(static function ($item) {
+                if (is_string($item) || is_numeric($item)) {
+                    return (string) $item;
+                }
+
+                return '';
+            }, $value));
+        } elseif (is_string($value)) {
+            $raw = $value;
+        } else {
+            $raw = '';
         }
 
         if (trim($raw) === '') {

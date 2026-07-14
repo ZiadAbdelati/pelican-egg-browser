@@ -11,7 +11,6 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
-use Illuminate\Support\Collection;
 use Throwable;
 
 class EggBrowserPage extends Page
@@ -38,7 +37,7 @@ class EggBrowserPage extends Page
 
     public string $indexError = '';
 
-    /** @var list<array<string, mixed>> */
+    /** @var list<array<string, string>> */
     public array $eggCards = [];
 
     public int $eggTotal = 0;
@@ -109,7 +108,7 @@ class EggBrowserPage extends Page
                     try {
                         app(EggIndexService::class)->forgetCache();
                         app(EggIndexService::class)->allEggs(forceRefresh: true);
-                        $this->reloadCatalog(forceRefresh: false);
+                        $this->reloadCatalog();
 
                         Notification::make()
                             ->title((string) __('egg-browser::strings.notifications.index_refreshed'))
@@ -189,9 +188,6 @@ class EggBrowserPage extends Page
 
         try {
             $this->repositoryOptions = $this->stringifyOptions($index->repositoryOptions());
-            $this->categoryOptions = $this->stringifyOptions(
-                collect($index->categories())->mapWithKeys(fn ($c) => [(string) $c => (string) $c])->all()
-            );
             $this->statusOptions = $this->buildStatusOptions();
             $this->rateLimitText = $this->formatRateLimit(app(GitHubClient::class)->rateLimitStatus());
 
@@ -201,11 +197,24 @@ class EggBrowserPage extends Page
                 'category' => $this->filterCategory,
             ], $forceRefresh);
 
+            $this->categoryOptions = $this->stringifyOptions(
+                $eggs->pluck('category')
+                    ->filter(fn ($c) => is_string($c) && $c !== '')
+                    ->unique()
+                    ->sort()
+                    ->mapWithKeys(fn ($c) => [(string) $c => (string) $c])
+                    ->all()
+            );
+
             $cards = $eggs->map(function (array $egg) use ($statusService): array {
-                $result = $statusService->resolveCatalogEgg($egg, fetchUpstream: false);
-                $status = $result['status'] instanceof EggInstallStatus
-                    ? $result['status']
-                    : EggInstallStatus::NotInstalled;
+                try {
+                    $result = $statusService->resolveCatalogEgg($egg, fetchUpstream: false);
+                    $status = $result['status'] instanceof EggInstallStatus
+                        ? $result['status']
+                        : EggInstallStatus::NotInstalled;
+                } catch (Throwable) {
+                    $status = EggInstallStatus::NotInstalled;
+                }
 
                 return $this->toCard($egg, $status);
             });
@@ -223,6 +232,7 @@ class EggBrowserPage extends Page
             $offset = ($this->catalogPage - 1) * $this->perPage;
             $this->eggCards = $cards->slice($offset, $this->perPage)->values()->all();
         } catch (Throwable $e) {
+            report($e);
             $this->indexError = $e->getMessage();
             $this->eggCards = [];
             $this->eggTotal = 0;

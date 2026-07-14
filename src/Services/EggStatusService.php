@@ -35,11 +35,48 @@ class EggStatusService
      */
     public function resolveCatalogEgg(array $catalogEgg, bool $fetchUpstream = true): array
     {
-        $tracked = TrackedEgg::query()
-            ->where('source_owner', $catalogEgg['owner'])
-            ->where('source_repo', $catalogEgg['repo'])
-            ->where('source_path', $catalogEgg['path'])
-            ->first();
+        $owner = $this->asString($catalogEgg['owner'] ?? null);
+        $repo = $this->asString($catalogEgg['repo'] ?? null);
+        $path = $this->asString($catalogEgg['path'] ?? null);
+        $branch = $this->asString($catalogEgg['branch'] ?? 'main') ?: 'main';
+
+        $tracked = null;
+        if ($owner !== '' && $repo !== '' && $path !== '') {
+            $tracked = TrackedEgg::query()
+                ->where('source_owner', $owner)
+                ->where('source_repo', $repo)
+                ->where('source_path', $path)
+                ->first();
+        }
+
+        // List views must stay cheap and never export local eggs.
+        if (!$fetchUpstream) {
+            if ($tracked) {
+                $status = EggInstallStatus::tryFrom((string) $tracked->status) ?? EggInstallStatus::UnknownUnlinked;
+
+                return [
+                    'status' => $status,
+                    'tracked' => $tracked,
+                    'local_egg' => null,
+                    'upstream_fingerprint' => $tracked->upstream_fingerprint,
+                    'installed_fingerprint' => $tracked->installed_fingerprint,
+                    'current_fingerprint' => null,
+                    'upstream_parsed' => null,
+                    'error' => is_string($tracked->last_error) ? $tracked->last_error : null,
+                ];
+            }
+
+            return [
+                'status' => EggInstallStatus::NotInstalled,
+                'tracked' => null,
+                'local_egg' => null,
+                'upstream_fingerprint' => null,
+                'installed_fingerprint' => null,
+                'current_fingerprint' => null,
+                'upstream_parsed' => null,
+                'error' => null,
+            ];
+        }
 
         $localEgg = $this->resolveLocalEgg($tracked, $catalogEgg);
 
@@ -62,62 +99,34 @@ class EggStatusService
                 'local_egg' => $localEgg,
                 'upstream_fingerprint' => null,
                 'installed_fingerprint' => null,
-                'current_fingerprint' => $this->fingerprintLocalEgg($localEgg),
+                'current_fingerprint' => null,
                 'error' => null,
             ];
         }
 
         try {
-            $upstreamFingerprint = $tracked?->upstream_fingerprint;
-            $upstreamParsed = null;
+            $manifest = $this->manifests->fetch(
+                $owner,
+                $repo,
+                $path,
+                $branch,
+            );
+            $upstreamParsed = $manifest['parsed'];
+            $upstreamFingerprint = $this->normalizer->fingerprint($upstreamParsed);
 
-            if ($fetchUpstream) {
-                $manifest = $this->manifests->fetch(
-                    $catalogEgg['owner'],
-                    $catalogEgg['repo'],
-                    $catalogEgg['path'],
-                    $catalogEgg['branch'] ?? 'main',
-                );
-                $upstreamParsed = $manifest['parsed'];
-                $upstreamFingerprint = $this->normalizer->fingerprint($upstreamParsed);
-
-                if ($tracked) {
-                    $tracked->upstream_fingerprint = $upstreamFingerprint;
-                    $tracked->source_sha = $catalogEgg['tree_sha'] ?? $tracked->source_sha;
-                    $tracked->source_blob_sha = $catalogEgg['blob_sha'] ?? $tracked->source_blob_sha;
-                    $tracked->last_checked_at = now();
-                    $tracked->last_error = null;
-                }
+            if ($tracked) {
+                $tracked->upstream_fingerprint = $upstreamFingerprint;
+                $tracked->source_sha = $this->asString($catalogEgg['tree_sha'] ?? $tracked->source_sha);
+                $tracked->source_blob_sha = $this->asString($catalogEgg['blob_sha'] ?? $tracked->source_blob_sha);
+                $tracked->last_checked_at = now();
+                $tracked->last_error = null;
             }
 
             $installedFingerprint = $tracked?->installed_fingerprint;
-
-            // List views pass fetchUpstream=false: trust stored status when present to avoid
-            // exporting every local egg on each page load.
-            if (!$fetchUpstream && $tracked) {
-                $status = EggInstallStatus::tryFrom($tracked->status) ?? EggInstallStatus::UnknownUnlinked;
-
-                // If the panel egg was deleted, surface not installed / unlinked cleanly.
-                if (!$localEgg) {
-                    $status = EggInstallStatus::NotInstalled;
-                }
-
-                return [
-                    'status' => $status,
-                    'tracked' => $tracked,
-                    'local_egg' => $localEgg,
-                    'upstream_fingerprint' => $upstreamFingerprint,
-                    'installed_fingerprint' => $installedFingerprint,
-                    'current_fingerprint' => null,
-                    'upstream_parsed' => null,
-                    'error' => $tracked->last_error,
-                ];
-            }
-
             $currentFingerprint = $localEgg ? $this->fingerprintLocalEgg($localEgg) : null;
 
             $status = $this->computeStatus(
-                installed: $installedFingerprint,
+                installed: is_string($installedFingerprint) ? $installedFingerprint : null,
                 current: $currentFingerprint,
                 upstream: $upstreamFingerprint,
                 hasLocal: (bool) $localEgg,
@@ -145,7 +154,7 @@ class EggStatusService
             ];
         } catch (\Throwable $e) {
             Log::warning('[egg-browser] status check failed', [
-                'key' => $catalogEgg['key'] ?? null,
+                'key' => $this->asString($catalogEgg['key'] ?? null),
                 'error' => $e->getMessage(),
             ]);
 
@@ -162,7 +171,7 @@ class EggStatusService
                 'local_egg' => $localEgg,
                 'upstream_fingerprint' => $tracked?->upstream_fingerprint,
                 'installed_fingerprint' => $tracked?->installed_fingerprint,
-                'current_fingerprint' => $localEgg ? $this->fingerprintLocalEgg($localEgg) : null,
+                'current_fingerprint' => null,
                 'error' => $e->getMessage(),
             ];
         }
@@ -297,5 +306,34 @@ class EggStatusService
         }
 
         return null;
+    }
+
+    protected function asString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if ($value instanceof \BackedEnum) {
+            return trim((string) $value->value);
+        }
+
+        if (is_array($value)) {
+            $first = reset($value);
+
+            return is_scalar($first) || $first instanceof \BackedEnum
+                ? $this->asString($first)
+                : '';
+        }
+
+        return '';
     }
 }

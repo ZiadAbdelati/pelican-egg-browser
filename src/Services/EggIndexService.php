@@ -10,6 +10,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class EggIndexService
 {
@@ -27,25 +28,36 @@ class EggIndexService
         $eggs = [];
 
         foreach ($this->repositories->enabledRepositories() as $repo) {
+            $owner = $this->asString($repo['owner'] ?? '');
+            $name = $this->asString($repo['name'] ?? '');
+            $branch = $this->asString($repo['branch'] ?? 'main') ?: 'main';
+
+            if ($owner === '' || $name === '') {
+                continue;
+            }
+
             try {
-                foreach ($this->indexRepository(
-                    $repo['owner'],
-                    $repo['name'],
-                    $repo['branch'] ?? 'main',
-                    $repo,
-                    $forceRefresh,
-                ) as $egg) {
-                    $eggs[] = $egg;
+                foreach ($this->indexRepository($owner, $name, $branch, $repo, $forceRefresh) as $egg) {
+                    if (!is_array($egg)) {
+                        continue;
+                    }
+
+                    $eggs[] = $this->normalizeEggRecord($egg);
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Log::warning('[egg-browser] Failed to index repository', [
-                    'repo' => $repo['owner'] . '/' . $repo['name'],
+                    'repo' => $owner . '/' . $name,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        usort($eggs, fn ($a, $b) => strcasecmp($a['name'] ?? $a['slug'], $b['name'] ?? $b['slug']));
+        usort($eggs, function (array $a, array $b): int {
+            $left = $this->asString($a['name'] ?? $a['slug'] ?? '');
+            $right = $this->asString($b['name'] ?? $b['slug'] ?? '');
+
+            return strcasecmp($left, $right);
+        });
 
         return $eggs;
     }
@@ -58,44 +70,46 @@ class EggIndexService
     {
         $eggs = collect($this->allEggs($forceRefresh));
 
-        $q = $this->filterString($filters['q'] ?? null);
+        $q = $this->asString($filters['q'] ?? null);
         if ($q !== '') {
             $needle = Str::lower($q);
             $eggs = $eggs->filter(function (array $egg) use ($needle) {
-                $tags = $egg['tags'] ?? [];
-                if (!is_array($tags)) {
-                    $tags = [];
-                }
+                $tags = is_array($egg['tags'] ?? null) ? $egg['tags'] : [];
+                $tagText = implode(' ', array_map(fn ($tag) => $this->asString($tag), $tags));
 
                 $haystack = Str::lower(implode(' ', array_filter([
-                    is_scalar($egg['name'] ?? null) ? (string) $egg['name'] : '',
-                    is_scalar($egg['slug'] ?? null) ? (string) $egg['slug'] : '',
-                    is_scalar($egg['description'] ?? null) ? (string) $egg['description'] : '',
-                    is_scalar($egg['path'] ?? null) ? (string) $egg['path'] : '',
-                    is_scalar($egg['repository'] ?? null) ? (string) $egg['repository'] : '',
-                    is_scalar($egg['category'] ?? null) ? (string) $egg['category'] : '',
-                    implode(' ', array_map(static fn ($tag) => is_scalar($tag) ? (string) $tag : '', $tags)),
+                    $this->asString($egg['name'] ?? null),
+                    $this->asString($egg['slug'] ?? null),
+                    $this->asString($egg['description'] ?? null),
+                    $this->asString($egg['path'] ?? null),
+                    $this->asString($egg['repository'] ?? null),
+                    $this->asString($egg['category'] ?? null),
+                    $tagText,
                 ])));
 
                 return str_contains($haystack, $needle);
             });
         }
 
-        $repo = $this->filterString($filters['repository'] ?? null);
+        $repo = $this->asString($filters['repository'] ?? null);
         if ($repo !== '') {
-            $eggs = $eggs->filter(fn (array $egg) => strcasecmp((string) ($egg['repository'] ?? ''), $repo) === 0);
+            $eggs = $eggs->filter(
+                fn (array $egg) => strcasecmp($this->asString($egg['repository'] ?? null), $repo) === 0
+            );
         }
 
-        $category = $this->filterString($filters['category'] ?? null);
+        $category = $this->asString($filters['category'] ?? null);
         if ($category !== '') {
-            $eggs = $eggs->filter(fn (array $egg) => strcasecmp((string) ($egg['category'] ?? ''), $category) === 0);
+            $eggs = $eggs->filter(
+                fn (array $egg) => strcasecmp($this->asString($egg['category'] ?? null), $category) === 0
+            );
         }
 
-        $tag = $this->filterString($filters['tag'] ?? null);
+        $tag = $this->asString($filters['tag'] ?? null);
         if ($tag !== '') {
             $eggs = $eggs->filter(function (array $egg) use ($tag) {
-                foreach ($egg['tags'] ?? [] as $eggTag) {
-                    if (is_scalar($eggTag) && strcasecmp((string) $eggTag, $tag) === 0) {
+                foreach ((array) ($egg['tags'] ?? []) as $eggTag) {
+                    if (strcasecmp($this->asString($eggTag), $tag) === 0) {
                         return true;
                     }
                 }
@@ -118,13 +132,17 @@ class EggIndexService
         array $repoMeta = [],
         bool $forceRefresh = false,
     ): array {
+        $owner = $this->asString($owner);
+        $name = $this->asString($name);
+        $branch = $this->asString($branch) ?: 'main';
+
         $cacheKey = $this->cacheKey($owner, $name, $branch);
         $ttl = (int) config('egg-browser.cache.index_ttl', 3600);
 
         if (!$forceRefresh) {
             $cached = Cache::get($cacheKey);
             if (is_array($cached)) {
-                return $cached;
+                return array_values(array_map(fn ($egg) => $this->normalizeEggRecord((array) $egg), $cached));
             }
 
             $row = RepositoryCache::query()
@@ -134,9 +152,10 @@ class EggIndexService
                 ->first();
 
             if ($row && is_array($row->eggs) && $row->fetched_at && $row->fetched_at->gt(now()->subSeconds($ttl))) {
-                Cache::put($cacheKey, $row->eggs, $ttl);
+                $eggs = array_values(array_map(fn ($egg) => $this->normalizeEggRecord((array) $egg), $row->eggs));
+                Cache::put($cacheKey, $eggs, $ttl);
 
-                return $row->eggs;
+                return $eggs;
             }
         }
 
@@ -147,15 +166,16 @@ class EggIndexService
                 $owner,
                 $name,
                 $branch,
-                $tree['sha'],
+                $this->asString($tree['sha'] ?? ''),
                 $repoMeta,
             );
             $eggs = $this->mergePreviousMetadata($owner, $name, $branch, $eggs);
+            $eggs = array_values(array_map(fn ($egg) => $this->normalizeEggRecord($egg), $eggs));
 
             RepositoryCache::query()->updateOrCreate(
                 ['owner' => $owner, 'name' => $name, 'branch' => $branch],
                 [
-                    'tree_sha' => $tree['sha'],
+                    'tree_sha' => $this->asString($tree['sha'] ?? ''),
                     'eggs' => $eggs,
                     'last_error' => null,
                     'fetched_at' => Carbon::now(),
@@ -181,7 +201,7 @@ class EggIndexService
                 ->first();
 
             if ($row && is_array($row->eggs) && $row->eggs !== []) {
-                return $row->eggs;
+                return array_values(array_map(fn ($egg) => $this->normalizeEggRecord((array) $egg), $row->eggs));
             }
 
             throw $e;
@@ -190,8 +210,10 @@ class EggIndexService
 
     public function findByKey(string $key): ?array
     {
+        $key = Str::lower($this->asString($key));
+
         foreach ($this->allEggs() as $egg) {
-            if (($egg['key'] ?? '') === $key) {
+            if (Str::lower($this->asString($egg['key'] ?? '')) === $key) {
                 return $egg;
             }
         }
@@ -208,7 +230,11 @@ class EggIndexService
         }
 
         foreach ($this->repositories->configuredRepositories() as $repo) {
-            Cache::forget($this->cacheKey($repo['owner'], $repo['name'], $repo['branch'] ?? 'main'));
+            Cache::forget($this->cacheKey(
+                $this->asString($repo['owner'] ?? ''),
+                $this->asString($repo['name'] ?? ''),
+                $this->asString($repo['branch'] ?? 'main') ?: 'main',
+            ));
         }
     }
 
@@ -218,7 +244,7 @@ class EggIndexService
     public function categories(): array
     {
         return collect($this->allEggs())
-            ->pluck('category')
+            ->map(fn (array $egg) => $this->asString($egg['category'] ?? null))
             ->filter()
             ->unique()
             ->sort()
@@ -231,37 +257,28 @@ class EggIndexService
      */
     public function repositoryOptions(): array
     {
-        return collect($this->repositories->enabledRepositories())
-            ->mapWithKeys(fn (array $repo) => [
-                $repo['owner'] . '/' . $repo['name'] => ($repo['label'] ?? $repo['name']) . ' (' . $repo['owner'] . '/' . $repo['name'] . ')',
-            ])
-            ->all();
+        $options = [];
+
+        foreach ($this->repositories->enabledRepositories() as $repo) {
+            $owner = $this->asString($repo['owner'] ?? '');
+            $name = $this->asString($repo['name'] ?? '');
+            if ($owner === '' || $name === '') {
+                continue;
+            }
+
+            $key = $owner . '/' . $name;
+            $label = $this->asString($repo['label'] ?? $name);
+            $options[$key] = $label . ' (' . $key . ')';
+        }
+
+        return $options;
     }
 
     protected function cacheKey(string $owner, string $name, string $branch): string
     {
-        $prefix = config('egg-browser.cache.prefix', 'egg-browser');
+        $prefix = $this->asString(config('egg-browser.cache.prefix', 'egg-browser')) ?: 'egg-browser';
 
-        return "{$prefix}:index:" . strtolower("{$owner}/{$name}@{$branch}");
-    }
-
-    protected function filterString(mixed $value): string
-    {
-        if (is_string($value)) {
-            return trim($value);
-        }
-
-        if (is_int($value) || is_float($value)) {
-            return trim((string) $value);
-        }
-
-        if (is_array($value)) {
-            $first = reset($value);
-
-            return is_scalar($first) ? trim((string) $first) : '';
-        }
-
-        return '';
+        return $prefix . ':index:' . strtolower($owner . '/' . $name . '@' . $branch);
     }
 
     /**
@@ -280,21 +297,107 @@ class EggIndexService
             return $eggs;
         }
 
-        $byPath = collect($row->eggs)->keyBy('path');
+        $byPath = collect($row->eggs)->filter(fn ($egg) => is_array($egg))->keyBy(
+            fn (array $egg) => $this->asString($egg['path'] ?? '')
+        );
 
         return array_map(function (array $egg) use ($byPath) {
-            $prev = $byPath->get($egg['path']);
-            if (!$prev) {
+            $prev = $byPath->get($this->asString($egg['path'] ?? ''));
+            if (!is_array($prev)) {
                 return $egg;
             }
 
-            foreach (['name', 'description', 'author', 'uuid', 'tags'] as $field) {
-                if (empty($egg[$field]) && !empty($prev[$field])) {
-                    $egg[$field] = $prev[$field];
+            foreach (['name', 'description', 'author', 'uuid'] as $field) {
+                if ($this->asString($egg[$field] ?? null) === '' && $this->asString($prev[$field] ?? null) !== '') {
+                    $egg[$field] = $this->asString($prev[$field]);
                 }
+            }
+
+            if (empty($egg['tags']) && !empty($prev['tags']) && is_array($prev['tags'])) {
+                $egg['tags'] = array_values(array_filter(array_map(fn ($tag) => $this->asString($tag), $prev['tags'])));
             }
 
             return $egg;
         }, $eggs);
+    }
+
+    /**
+     * @param  array<string, mixed>  $egg
+     * @return array<string, mixed>
+     */
+    protected function normalizeEggRecord(array $egg): array
+    {
+        $owner = $this->asString($egg['owner'] ?? '');
+        $repo = $this->asString($egg['repo'] ?? '');
+        $path = $this->asString($egg['path'] ?? '');
+        $branch = $this->asString($egg['branch'] ?? 'main') ?: 'main';
+        $slug = $this->asString($egg['slug'] ?? basename($path, '.json'));
+        $name = $this->asString($egg['name'] ?? null);
+        if ($name === '') {
+            $name = $slug !== '' ? Str::title(str_replace(['-', '_'], ' ', $slug)) : 'Egg';
+        }
+
+        $tags = [];
+        if (is_array($egg['tags'] ?? null)) {
+            foreach ($egg['tags'] as $tag) {
+                $tag = $this->asString($tag);
+                if ($tag !== '') {
+                    $tags[] = $tag;
+                }
+            }
+        }
+
+        return [
+            'key' => $this->asString($egg['key'] ?? '') ?: strtolower($owner . '/' . $repo . ':' . $path),
+            'owner' => $owner,
+            'repo' => $repo,
+            'repository' => $this->asString($egg['repository'] ?? '') ?: ($owner . '/' . $repo),
+            'branch' => $branch,
+            'path' => $path,
+            'blob_sha' => $this->asString($egg['blob_sha'] ?? null),
+            'tree_sha' => $this->asString($egg['tree_sha'] ?? null),
+            'size' => is_numeric($egg['size'] ?? null) ? (int) $egg['size'] : null,
+            'slug' => $slug,
+            'name' => $name,
+            'description' => $this->asString($egg['description'] ?? null) ?: null,
+            'author' => $this->asString($egg['author'] ?? null) ?: null,
+            'uuid' => $this->asString($egg['uuid'] ?? null) ?: null,
+            'tags' => array_values(array_unique($tags)),
+            'category' => $this->asString($egg['category'] ?? $repo) ?: $repo,
+            'repository_label' => $this->asString($egg['repository_label'] ?? $repo) ?: $repo,
+            'raw_url' => $this->asString($egg['raw_url'] ?? null)
+                ?: "https://raw.githubusercontent.com/{$owner}/{$repo}/{$branch}/{$path}",
+            'html_url' => $this->asString($egg['html_url'] ?? null)
+                ?: "https://github.com/{$owner}/{$repo}/blob/{$branch}/{$path}",
+        ];
+    }
+
+    protected function asString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if ($value instanceof \BackedEnum) {
+            return trim((string) $value->value);
+        }
+
+        if (is_array($value)) {
+            $first = reset($value);
+
+            return is_scalar($first) || $first instanceof \BackedEnum
+                ? $this->asString($first)
+                : '';
+        }
+
+        return '';
     }
 }

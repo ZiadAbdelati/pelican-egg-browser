@@ -7,24 +7,31 @@
         @if ($indexError !== '')
             <div class="rounded-lg border border-danger-300 bg-danger-50 p-4 text-sm text-danger-700 dark:border-danger-600 dark:bg-danger-950 dark:text-danger-300">
                 <div class="font-semibold">{{ __('egg-browser::strings.browser.index_error') }}</div>
-                <div class="mt-1 font-mono text-xs">{{ $indexError }}</div>
+                <div class="mt-1 font-mono text-xs break-all">{{ $indexError }}</div>
             </div>
         @endif
 
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div class="md:col-span-2">
-                <label class="mb-1 block text-sm font-medium">{{ __('egg-browser::strings.browser.search') }}</label>
+                <label class="fi-fo-field-label-content mb-1 block text-sm font-medium leading-6 text-gray-950 dark:text-white">
+                    {{ __('egg-browser::strings.browser.search') }}
+                </label>
                 <input
                     type="search"
                     wire:model.live.debounce.400ms="search"
                     placeholder="{{ __('egg-browser::strings.browser.search_placeholder') }}"
-                    class="w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                    class="fi-input block w-full rounded-lg border-none bg-white px-3 py-2 text-base text-gray-950 shadow-sm outline-none ring-1 ring-gray-950/10 transition duration-75 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-600 disabled:bg-gray-50 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] disabled:placeholder:[-webkit-text-fill-color:theme(colors.gray.400)] dark:bg-white/5 dark:text-white dark:ring-white/20 dark:placeholder:text-gray-500 dark:focus:ring-primary-500 dark:disabled:bg-transparent dark:disabled:text-gray-400 sm:text-sm sm:leading-6"
                 />
             </div>
 
             <div>
-                <label class="mb-1 block text-sm font-medium">{{ __('egg-browser::strings.browser.repository') }}</label>
-                <select wire:model.live="filterRepository" class="w-full rounded-lg border-gray-300 shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                <label class="fi-fo-field-label-content mb-1 block text-sm font-medium leading-6 text-gray-950 dark:text-white">
+                    {{ __('egg-browser::strings.browser.repository') }}
+                </label>
+                <select
+                    wire:model.live="filterRepository"
+                    class="fi-select-input block w-full rounded-lg border-none bg-white py-2 pe-8 ps-3 text-base text-gray-950 shadow-sm outline-none ring-1 ring-gray-950/10 transition duration-75 focus:ring-2 focus:ring-primary-600 disabled:bg-gray-50 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] dark:bg-white/5 dark:text-white dark:ring-white/20 dark:focus:ring-primary-500 dark:disabled:bg-transparent sm:text-sm sm:leading-6"
+                >
                     <option value="">{{ __('egg-browser::strings.browser.all_repositories') }}</option>
                     @foreach ($repositoryOptions as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
@@ -33,8 +40,13 @@
             </div>
 
             <div>
-                <label class="mb-1 block text-sm font-medium">{{ __('egg-browser::strings.browser.category') }}</label>
-                <select wire:model.live="filterCategory" class="w-full rounded-lg border-gray-300 shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                <label class="fi-fo-field-label-content mb-1 block text-sm font-medium leading-6 text-gray-950 dark:text-white">
+                    {{ __('egg-browser::strings.browser.category') }}
+                </label>
+                <select
+                    wire:model.live="filterCategory"
+                    class="fi-select-input block w-full rounded-lg border-none bg-white py-2 pe-8 ps-3 text-base text-gray-950 shadow-sm outline-none ring-1 ring-gray-950/10 transition duration-75 focus:ring-2 focus:ring-primary-600 disabled:bg-gray-50 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] dark:bg-white/5 dark:text-white dark:ring-white/20 dark:focus:ring-primary-500 dark:disabled:bg-transparent sm:text-sm sm:leading-6"
+                >
                     <option value="">{{ __('egg-browser::strings.browser.all_categories') }}</option>
                     @foreach ($categoryOptions as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
@@ -43,8 +55,13 @@
             </div>
 
             <div>
-                <label class="mb-1 block text-sm font-medium">{{ __('egg-browser::strings.browser.status') }}</label>
-                <select wire:model.live="filterStatus" class="w-full rounded-lg border-gray-300 shadow-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                <label class="fi-fo-field-label-content mb-1 block text-sm font-medium leading-6 text-gray-950 dark:text-white">
+                    {{ __('egg-browser::strings.browser.status') }}
+                </label>
+                <select
+                    wire:model.live="filterStatus"
+                    class="fi-select-input block w-full rounded-lg border-none bg-white py-2 pe-8 ps-3 text-base text-gray-950 shadow-sm outline-none ring-1 ring-gray-950/10 transition duration-75 focus:ring-2 focus:ring-primary-600 disabled:bg-gray-50 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] dark:bg-white/5 dark:text-white dark:ring-white/20 dark:focus:ring-primary-500 dark:disabled:bg-transparent sm:text-sm sm:leading-6"
+                >
                     <option value="">{{ __('egg-browser::strings.browser.all_statuses') }}</option>
                     @foreach ($statusOptions as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>

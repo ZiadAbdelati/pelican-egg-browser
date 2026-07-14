@@ -202,16 +202,11 @@ class EggBrowserPage extends Page
         $this->catalogPage = 1;
         $this->reloadCatalog();
     }
-
-    public function gotoPage(int $page): void
-    {
-        $this->catalogPage = max(1, min($page, max(1, $this->eggTotalPages)));
-        $this->reloadCatalog();
-    }
-
     public function detailUrl(string $key): string
     {
-        return EggBrowserDetailPage::getUrl(['key' => $key]);
+        $encoded = rtrim(strtr(base64_encode($key), '+/', '-_'), '=');
+
+        return EggBrowserDetailPage::getUrl(['key' => $encoded]);
     }
 
     public function reloadCatalog(bool $forceRefresh = false): void

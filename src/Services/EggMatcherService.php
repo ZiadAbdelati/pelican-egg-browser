@@ -77,8 +77,8 @@ class EggMatcherService
             }
         }
 
-        // Require a reasonably confident match for list badges.
-        return $bestScore >= 50 ? $best : null;
+        // Browser badges are only safe for a UUID or exact update_url source match.
+        return $bestScore >= 95 ? $best : null;
     }
 
     /**
@@ -121,8 +121,8 @@ class EggMatcherService
                 }
             }
 
-            // Accept moderate+ confidence for linking.
-            if ($best !== null && $bestScore >= 45) {
+            // Auto-link only proven source identity: UUID or exact update_url path.
+            if ($best !== null && $bestScore >= 95) {
                 $key = $this->catalogKey($best);
                 $usedCatalogKeys[$key] = true;
                 $matches[] = [
@@ -151,7 +151,7 @@ class EggMatcherService
     public function matchVia(Egg $egg, array $catalogEgg): ?string
     {
         $score = $this->score($egg, $catalogEgg);
-        if ($score < 45) {
+        if ($score < 95) {
             return null;
         }
 

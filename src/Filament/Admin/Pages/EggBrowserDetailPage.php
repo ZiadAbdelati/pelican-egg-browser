@@ -59,7 +59,8 @@ class EggBrowserDetailPage extends Page
 
     public function mount(string $key): void
     {
-        $this->key = urldecode($key);
+        $decoded = base64_decode(strtr($key, '-_', '+/'), true);
+        $this->key = $decoded !== false ? $decoded : urldecode($key);
         $this->loadEgg();
     }
 

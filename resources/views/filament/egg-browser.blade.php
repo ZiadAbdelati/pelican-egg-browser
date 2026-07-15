@@ -264,4 +264,5 @@
             @endif
         </div>
     </div>
+    </div>
 </x-filament-panels::page>

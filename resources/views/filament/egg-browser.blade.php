@@ -221,7 +221,9 @@
         </div>
 
         <div x-show="activeTab === 'manage'" x-cloak>
-            {{ $this->table }}
+            <div class="pt-6">
+                {{ $this->table }}
+            </div>
         </div>
     </div>
 </x-filament-panels::page>

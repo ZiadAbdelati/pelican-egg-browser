@@ -161,8 +161,6 @@ class EggBrowserDetailPage extends Page
                 ->icon($this->checkingDisabled ? 'tabler-bell-check' : 'tabler-bell-off')
                 ->color($this->checkingDisabled ? 'success' : 'gray')
                 ->visible(fn (): bool => EggBrowserPage::canManage() && $this->trackedId !== null)
-                ->requiresConfirmation()
-                ->modalDescription(trans($this->checkingDisabled ? 'egg-browser::strings.browser.enable_checking_help' : 'egg-browser::strings.browser.disable_checking_help'))
                 ->action(fn () => $this->toggleChecking(!$this->checkingDisabled));
 
             $actions[] = Action::make('update')

@@ -1,5 +1,5 @@
 <x-filament-panels::page>
-    <div class="space-y-4">
+    <div class="space-y-4 pt-6">
         <p class="text-sm text-gray-500 dark:text-gray-400">
             {{ trans('egg-browser::strings.installed.subtitle') }}
         </p>

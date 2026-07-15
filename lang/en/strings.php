@@ -134,6 +134,7 @@ return [
         'manifest_ttl' => 'Egg manifest cache TTL (seconds)',
         'saved' => 'Egg Browser settings saved',
         'sync_installed_eggs' => 'Sync installed eggs',
+        'sync_installed_eggs_button' => 'Sync now',
         'sync_installed_eggs_help' => 'Scan existing panel eggs with GitHub update_url values and create Egg Browser tracking rows. Existing rows are kept.',
     ],
 

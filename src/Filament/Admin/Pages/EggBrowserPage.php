@@ -26,7 +26,6 @@ class EggBrowserPage extends Page
     protected static ?string $slug = 'egg-browser';
 
     protected static ?int $navigationSort = 2;
-    protected static ?string $navigationParentItem = \App\Filament\Admin\Resources\Eggs\EggResource::class;
 
 
     protected string $view = 'egg-browser::filament.egg-browser';
@@ -89,8 +88,14 @@ class EggBrowserPage extends Page
 
     public static function getNavigationGroup(): ?string
     {
-        // Must match the stock Eggs resource group when it is rendered in sidebar mode.
+        // Match the stock Eggs resource group; required for child navigation items.
         return \App\Filament\Admin\Resources\Eggs\EggResource::getNavigationGroup();
+    }
+
+    public static function getNavigationParentItem(): ?string
+    {
+        // Filament supports parent labels; this matches Pelican's stock Eggs nav label.
+        return \App\Filament\Admin\Resources\Eggs\EggResource::getNavigationLabel();
     }
 
     public static function canAccess(): bool

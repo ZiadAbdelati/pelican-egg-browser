@@ -1,4 +1,4 @@
-<x-filament-panels::page>
+<x-filament-panels::page class="fi-page-settings">
     <div class="rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
         {{-- Settings-style tab bar --}}
         <div class="border-b border-gray-200 p-3 dark:border-white/10">

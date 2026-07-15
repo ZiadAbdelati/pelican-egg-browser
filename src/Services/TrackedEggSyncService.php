@@ -4,6 +4,8 @@ namespace Community\EggBrowser\Services;
 
 use App\Models\Egg;
 use Community\EggBrowser\Models\TrackedEgg;
+use Community\EggBrowser\Models\PluginSetting;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 
 class TrackedEggSyncService
@@ -52,5 +54,41 @@ class TrackedEggSyncService
     public function autoLinkFromUpdateUrls(bool $checkUpstream = true): array
     {
         return app(EggInstallService::class)->linkLocalMatches(checkUpstream: $checkUpstream);
+    }
+
+    /**
+     * Import existing panel eggs once after the plugin tables are available.
+     */
+    public function autoLinkOnceAfterInstall(): void
+    {
+        try {
+            if (!Schema::hasTable('egg_browser_settings') || !Schema::hasTable('egg_browser_tracked_eggs')) {
+                return;
+            }
+
+            $setting = PluginSetting::query()->firstOrCreate(
+                ['key' => 'initial_local_link_completed'],
+                ['value' => ['completed' => false]]
+            );
+
+            if (($setting->value['completed'] ?? false) === true) {
+                return;
+            }
+
+            $this->pruneOrphans();
+            $result = $this->autoLinkFromUpdateUrls(checkUpstream: false);
+
+            $setting->value = [
+                'completed' => true,
+                'linked' => $result['linked'],
+                'checked' => $result['checked'],
+                'skipped' => $result['skipped'],
+                'errors' => array_slice($result['errors'], 0, 10),
+                'ran_at' => now()->toIso8601String(),
+            ];
+            $setting->save();
+        } catch (\Throwable $e) {
+            Log::warning('[egg-browser] initial local egg link failed', ['error' => $e->getMessage()]);
+        }
     }
 }

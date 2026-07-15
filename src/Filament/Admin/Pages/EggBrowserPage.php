@@ -7,7 +7,6 @@ use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Jobs\CheckTrackedEggJob;
 use Community\EggBrowser\Models\TrackedEgg;
 use Community\EggBrowser\Services\EggIndexService;
-use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Community\EggBrowser\Services\TrackedEggSyncService;
@@ -182,7 +181,6 @@ class EggBrowserPage extends Page implements HasTable
             ->heading((string) __('egg-browser::strings.tabs.manage'))
             ->description((string) __('egg-browser::strings.installed.subtitle'))
             ->headerActions([
-                $this->linkLocalAction(),
                 $this->checkAllAction(),
             ])
             ->columns([
@@ -215,14 +213,6 @@ class EggBrowserPage extends Page implements HasTable
                     ->color('gray')
                     ->visible(fn (): bool => self::canManage())
                     ->action(fn (TrackedEgg $record) => $this->checkOne($record->id)),
-                Action::make('unlink')
-                    ->label((string) __('egg-browser::strings.installed.delete'))
-                    ->icon('tabler-unlink')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->modalDescription((string) __('egg-browser::strings.installed.delete_confirm'))
-                    ->visible(fn (): bool => self::canManage())
-                    ->action(fn (TrackedEgg $record) => $this->deleteEgg($record->id)),
             ]);
     }
 
@@ -256,48 +246,6 @@ class EggBrowserPage extends Page implements HasTable
             });
     }
 
-    protected function linkLocalAction(): Action
-    {
-        return Action::make('linkLocal')
-            ->label((string) __('egg-browser::strings.browser.link_local'))
-            ->icon('tabler-link')
-            ->color('gray')
-            ->visible(fn (): bool => self::canManage())
-            ->requiresConfirmation()
-            ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
-            ->action(function (): void {
-                try {
-                    app(TrackedEggSyncService::class)->pruneOrphans();
-                    $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
-
-                    $body = (string) __('egg-browser::strings.notifications.link_stats', [
-                        'local_total' => $result['stats']['local_total'] ?? 0,
-                        'local_untracked' => $result['stats']['local_untracked'] ?? 0,
-                        'catalog_total' => $result['stats']['catalog_total'] ?? 0,
-                        'matched' => $result['stats']['matched'] ?? 0,
-                    ]);
-                    if (!empty($result['errors'])) {
-                        $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
-                    }
-
-                    Notification::make()
-                        ->title((string) __('egg-browser::strings.notifications.link_done', [
-                            'linked' => $result['linked'],
-                            'checked' => $result['checked'],
-                            'skipped' => $result['skipped'],
-                        ]))
-                        ->body($body)
-                        ->success()
-                        ->send();
-                } catch (Throwable $e) {
-                    Notification::make()
-                        ->title((string) __('egg-browser::strings.notifications.error'))
-                        ->body($e->getMessage())
-                        ->danger()
-                        ->send();
-                }
-            });
-    }
 
     public function refreshIndex(): void
     {
@@ -440,35 +388,6 @@ class EggBrowserPage extends Page implements HasTable
             ->send();
     }
 
-    public function deleteEgg(int $trackedId): void
-    {
-        if (!self::canManage()) {
-            $this->denyUnauthorized();
-
-            return;
-        }
-
-        $tracked = TrackedEgg::query()->find($trackedId);
-        if (!$tracked) {
-            return;
-        }
-
-        try {
-            $name = $tracked->egg_name ?? "#{$trackedId}";
-            $tracked->delete();
-
-            Notification::make()
-                ->title((string) __('egg-browser::strings.installed.delete_success', ['name' => $name]))
-                ->success()
-                ->send();
-        } catch (Throwable $e) {
-            Notification::make()
-                ->title((string) __('egg-browser::strings.notifications.error'))
-                ->body($e->getMessage())
-                ->danger()
-                ->send();
-        }
-    }
 
     public function statusColor(string $status): string
     {

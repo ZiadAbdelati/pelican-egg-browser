@@ -38,6 +38,7 @@ class CheckAllTrackedEggsJob implements ShouldQueue
         }
 
         TrackedEgg::query()
+            ->whereNull('checking_disabled_at')
             ->orderBy('id')
             ->chunkById(50, function ($trackedEggs) use ($status) {
                 foreach ($trackedEggs as $tracked) {

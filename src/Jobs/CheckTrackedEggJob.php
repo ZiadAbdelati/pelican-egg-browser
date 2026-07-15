@@ -30,6 +30,10 @@ class CheckTrackedEggJob implements ShouldQueue
             return;
         }
 
+        if ($tracked->checking_disabled_at !== null) {
+            return;
+        }
+
         $status->checkTracked($tracked, fetchUpstream: true);
     }
 }

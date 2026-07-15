@@ -5,12 +5,15 @@ namespace Community\EggBrowser;
 use App\Contracts\Plugins\HasPluginSettings;
 use App\Traits\EnvironmentWriterTrait;
 use Community\EggBrowser\Services\RepositoryConfigService;
+use Community\EggBrowser\Services\TrackedEggSyncService;
+use Filament\Actions\Action;
 use Filament\Contracts\Plugin;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Actions;
 use Filament\Notifications\Notification;
 use Filament\Panel;
 use Illuminate\Support\Facades\Artisan;
@@ -124,6 +127,41 @@ class EggBrowserPlugin implements HasPluginSettings, Plugin
                 ->numeric()
                 ->minValue(60)
                 ->default(fn () => (int) config('egg-browser.cache.manifest_ttl', 1800)),
+
+            Actions::make([
+                Action::make('syncInstalledEggs')
+                    ->label(trans('egg-browser::strings.settings.sync_installed_eggs'))
+                    ->icon('tabler-link')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalDescription(trans('egg-browser::strings.settings.sync_installed_eggs_help'))
+                    ->action(function (): void {
+                        $sync = app(TrackedEggSyncService::class);
+                        $sync->pruneOrphans();
+                        $result = $sync->autoLinkFromUpdateUrls(checkUpstream: true);
+
+                        $body = trans('egg-browser::strings.notifications.link_stats', [
+                            'local_total' => $result['stats']['local_total'] ?? 0,
+                            'local_untracked' => $result['stats']['local_untracked'] ?? 0,
+                            'catalog_total' => $result['stats']['catalog_total'] ?? 0,
+                            'matched' => $result['stats']['matched'] ?? 0,
+                        ]);
+
+                        if (!empty($result['errors'])) {
+                            $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
+                        }
+
+                        Notification::make()
+                            ->title(trans('egg-browser::strings.notifications.link_done', [
+                                'linked' => $result['linked'],
+                                'checked' => $result['checked'],
+                                'skipped' => $result['skipped'],
+                            ]))
+                            ->body($body)
+                            ->success()
+                            ->send();
+                    }),
+            ])->columnSpanFull(),
         ];
     }
 

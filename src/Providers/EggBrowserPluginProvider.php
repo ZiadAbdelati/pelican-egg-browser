@@ -54,6 +54,10 @@ class EggBrowserPluginProvider extends ServiceProvider
     public function boot(): void
     {
         Egg::observe(EggObserver::class);
+        $this->app->booted(function () {
+            app(TrackedEggSyncService::class)->autoLinkOnceAfterInstall();
+        });
+
 
         if ($this->app->runningInConsole()) {
             $this->commands([

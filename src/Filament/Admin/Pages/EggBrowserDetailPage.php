@@ -5,6 +5,7 @@ namespace Community\EggBrowser\Filament\Admin\Pages;
 use Community\EggBrowser\Enums\EggInstallStatus;
 use Community\EggBrowser\Exceptions\EggInstallException;
 use Community\EggBrowser\Jobs\CheckTrackedEggJob;
+use Community\EggBrowser\Models\TrackedEgg;
 use Community\EggBrowser\Services\EggIndexService;
 use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\EggManifestService;
@@ -52,6 +53,7 @@ class EggBrowserDetailPage extends Page
     public ?int $localEggId = null;
 
     public ?int $trackedId = null;
+    public bool $checkingDisabled = false;
 
     /** @var array<string, array{changed: bool, left: mixed, right: mixed, fields?: list<array{path: string, left: mixed, right: mixed}>}> */
     public array $diff = [];
@@ -145,12 +147,23 @@ class EggBrowserDetailPage extends Page
                     $this->installEgg($data['tags'] ?? []);
                 });
         } else {
-            $actions[] = Action::make('check')
-                ->label(trans('egg-browser::strings.browser.check_updates'))
-                ->icon('tabler-cloud-search')
-                ->color('gray')
-                ->visible(fn (): bool => EggBrowserPage::canManage())
-                ->action(fn () => $this->checkNow());
+            if (!$this->checkingDisabled) {
+                $actions[] = Action::make('check')
+                    ->label(trans('egg-browser::strings.browser.check_updates'))
+                    ->icon('tabler-cloud-search')
+                    ->color('gray')
+                    ->visible(fn (): bool => EggBrowserPage::canManage())
+                    ->action(fn () => $this->checkNow());
+            }
+
+            $actions[] = Action::make($this->checkingDisabled ? 'enableChecking' : 'disableChecking')
+                ->label(trans($this->checkingDisabled ? 'egg-browser::strings.browser.enable_checking' : 'egg-browser::strings.browser.disable_checking'))
+                ->icon($this->checkingDisabled ? 'tabler-bell-check' : 'tabler-bell-off')
+                ->color($this->checkingDisabled ? 'success' : 'gray')
+                ->visible(fn (): bool => EggBrowserPage::canManage() && $this->trackedId !== null)
+                ->requiresConfirmation()
+                ->modalDescription(trans($this->checkingDisabled ? 'egg-browser::strings.browser.enable_checking_help' : 'egg-browser::strings.browser.disable_checking_help'))
+                ->action(fn () => $this->toggleChecking(!$this->checkingDisabled));
 
             $actions[] = Action::make('update')
                 ->label(trans('egg-browser::strings.browser.update'))
@@ -271,6 +284,7 @@ class EggBrowserDetailPage extends Page
             $this->statusValue = $result['status']->value;
             $this->localEggId = $result['local_egg']?->id;
             $this->trackedId = $result['tracked']?->id;
+            $this->checkingDisabled = (bool) $result['tracked']?->checking_disabled_at;
 
             if ($this->error !== null && $result['status'] === EggInstallStatus::CheckFailed) {
                 // already failed
@@ -455,6 +469,15 @@ class EggBrowserDetailPage extends Page
             return;
         }
 
+        if ($this->checkingDisabled) {
+            Notification::make()
+                ->title(trans('egg-browser::strings.notifications.checking_disabled'))
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         if ($this->trackedId) {
             CheckTrackedEggJob::dispatchSync($this->trackedId);
         }
@@ -465,6 +488,29 @@ class EggBrowserDetailPage extends Page
             ->title(trans('egg-browser::strings.browser.check_success', [
                 'status' => $this->statusEnum()->displayName(),
             ]))
+            ->success()
+            ->send();
+    }
+
+    public function toggleChecking(bool $disabled): void
+    {
+        if (!EggBrowserPage::canManage() || !$this->trackedId) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
+        $tracked = TrackedEgg::query()->find($this->trackedId);
+        if (!$tracked) {
+            return;
+        }
+
+        $tracked->checking_disabled_at = $disabled ? now() : null;
+        $tracked->save();
+        $this->checkingDisabled = $disabled;
+
+        Notification::make()
+            ->title(trans($disabled ? 'egg-browser::strings.notifications.checking_disabled' : 'egg-browser::strings.notifications.checking_enabled'))
             ->success()
             ->send();
     }

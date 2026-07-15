@@ -95,13 +95,13 @@ The plugin registers admin permissions for the custom `egg_browser` permission m
 | `view egg_browser` | Browse catalog / tracked list |
 | `install egg_browser` | Install eggs |
 | `update egg_browser` | Apply updates |
-| `manage egg_browser` | Settings, linking, and bulk checks |
+| `manage egg_browser` | Settings, sync, disable-check toggles, and bulk checks |
 
 Root admins always have access. Grant the custom permissions on roles as needed.
 
-### Linking existing panel eggs safely
+### Existing panel eggs
 
-`Link installed eggs` uses each panel egg’s **`update_url`** (the same field the panel’s built-in egg updater uses). Supported forms:
+On first boot after the plugin tables exist, Egg Browser scans local panel eggs once and links entries that already have a supported GitHub **`update_url`** (the same field the panel’s built-in egg updater uses):
 
 ```text
 https://raw.githubusercontent.com/pelican-eggs/minecraft/refs/heads/main/java/paper/egg-paper.yaml
@@ -109,7 +109,13 @@ https://raw.githubusercontent.com/pelican-eggs/minecraft/main/java/paper/egg-pap
 https://github.com/pelican-eggs/minecraft/blob/main/java/paper/egg-paper.yaml
 ```
 
-Both `.yaml` and `.json` are supported. Name/slug guessing is **not** used for auto-link (it previously caused wrong source associations).
+Both `.yaml` and `.json` are supported. Name/slug guessing is **not** used for auto-link because it can associate an egg with the wrong upstream source.
+
+You can re-run this scan from **Plugin settings → Sync installed eggs** or with:
+
+```bash
+php artisan egg-browser:link-local
+```
 
 If an earlier Egg Browser version created guessed links, remove only invalid **tracking rows** (never local panel eggs):
 
@@ -118,14 +124,9 @@ php artisan egg-browser:repair-tracking --dry-run
 php artisan egg-browser:repair-tracking
 ```
 
-Then run:
-
-```bash
-php artisan egg-browser:refresh-index
-php artisan egg-browser:link-local
-```
-
 Eggs without a usable `update_url` stay untracked until you set one or install them from the browser.
+
+Use **Disable checking** on a detail page or the Installed Eggs page when an egg should remain installed but no longer participate in Egg Browser update checks.
 
 ### Tracking stays in sync automatically
 

@@ -6,7 +6,6 @@ use Community\EggBrowser\Enums\EggInstallStatus;
 use Community\EggBrowser\Jobs\CheckAllTrackedEggsJob;
 use Community\EggBrowser\Jobs\CheckTrackedEggJob;
 use Community\EggBrowser\Models\TrackedEgg;
-use Community\EggBrowser\Services\EggInstallService;
 use Community\EggBrowser\Services\TrackedEggSyncService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -90,45 +89,6 @@ class TrackedEggsPage extends Page
                             ->send();
                     }
                 }),
-            Action::make('linkLocal')
-                ->label((string) __('egg-browser::strings.installed.link_local'))
-                ->icon('tabler-link')
-                ->color('gray')
-                ->visible(fn (): bool => EggBrowserPage::canManage())
-                ->requiresConfirmation()
-                ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
-                ->action(function (): void {
-                    try {
-                        app(TrackedEggSyncService::class)->pruneOrphans();
-                        $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
-
-                        $body = (string) __('egg-browser::strings.notifications.link_stats', [
-                            'local_total' => $result['stats']['local_total'] ?? 0,
-                            'local_untracked' => $result['stats']['local_untracked'] ?? 0,
-                            'catalog_total' => $result['stats']['catalog_total'] ?? 0,
-                            'matched' => $result['stats']['matched'] ?? 0,
-                        ]);
-                        if (!empty($result['errors'])) {
-                            $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
-                        }
-
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.link_done', [
-                                'linked' => $result['linked'],
-                                'checked' => $result['checked'],
-                                'skipped' => $result['skipped'],
-                            ]))
-                            ->body($body)
-                            ->success()
-                            ->send();
-                    } catch (Throwable $e) {
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.error'))
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
             Action::make('browser')
                 ->label((string) __('egg-browser::strings.navigation.browser'))
                 ->url(EggBrowserPage::getUrl())
@@ -174,7 +134,7 @@ class TrackedEggsPage extends Page
             ->send();
     }
 
-    public function deleteEgg(int $trackedId): void
+    public function toggleChecking(int $id, bool $disabled): void
     {
         if (!EggBrowserPage::canManage()) {
             $this->denyUnauthorized();
@@ -182,27 +142,25 @@ class TrackedEggsPage extends Page
             return;
         }
 
-        $tracked = TrackedEgg::query()->find($trackedId);
+        $tracked = TrackedEgg::query()->find($id);
         if (!$tracked) {
             return;
         }
 
-        try {
-            $name = $tracked->egg_name ?? "#{$trackedId}";
-            $tracked->delete();
+        $tracked->checking_disabled_at = $disabled ? now() : null;
+        $tracked->save();
 
-            Notification::make()
-                ->title((string) __('egg-browser::strings.installed.delete_success', ['name' => $name]))
-                ->success()
-                ->send();
-        } catch (Throwable $e) {
-            Notification::make()
-                ->title((string) __('egg-browser::strings.notifications.error'))
-                ->body($e->getMessage())
-                ->danger()
-                ->send();
-        }
+        Notification::make()
+            ->title((string) __('egg-browser::strings.notifications.' . ($disabled ? 'checking_disabled' : 'checking_enabled')))
+            ->success()
+            ->send();
     }
+
+    public function canCheck(TrackedEgg $tracked): bool
+    {
+        return $tracked->checking_disabled_at === null;
+    }
+
 
     public function detailUrl(TrackedEgg $tracked): string
     {

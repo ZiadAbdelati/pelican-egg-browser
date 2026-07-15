@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string $status
  * @property string|null $last_error
  * @property Carbon|null $last_checked_at
+ * @property Carbon|null $checking_disabled_at
  * @property Carbon|null $last_installed_at
  * @property Carbon|null $last_updated_at
  * @property Carbon|null $created_at
@@ -53,6 +54,7 @@ class TrackedEgg extends Model
         'status',
         'last_error',
         'last_checked_at',
+        'checking_disabled_at',
         'last_installed_at',
         'last_updated_at',
     ];
@@ -62,6 +64,7 @@ class TrackedEgg extends Model
         return [
             'installed_snapshot' => 'array',
             'last_checked_at' => 'datetime',
+            'checking_disabled_at' => 'datetime',
             'last_installed_at' => 'datetime',
             'last_updated_at' => 'datetime',
         ];

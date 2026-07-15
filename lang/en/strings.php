@@ -78,6 +78,10 @@ return [
         'link_local' => 'Link installed eggs',
         'link_local_help' => 'Match panel eggs that already have a GitHub update_url.',
         'actions' => 'Actions',
+        'disable_checking' => 'Disable checking',
+        'enable_checking' => 'Enable checking',
+        'disable_checking_help' => 'Stop Egg Browser from checking this egg for upstream updates. The panel egg remains installed.',
+        'enable_checking_help' => 'Resume Egg Browser update checks for this egg.',
         'back' => 'Back to browser',
         'per_page' => 'Per page',
     ],
@@ -129,6 +133,8 @@ return [
         'index_ttl' => 'Repository index cache TTL (seconds)',
         'manifest_ttl' => 'Egg manifest cache TTL (seconds)',
         'saved' => 'Egg Browser settings saved',
+        'sync_installed_eggs' => 'Sync installed eggs',
+        'sync_installed_eggs_help' => 'Scan existing panel eggs with GitHub update_url values and create Egg Browser tracking rows. Existing rows are kept.',
     ],
 
     'permissions' => [
@@ -147,5 +153,7 @@ return [
         'link_stats' => 'Local eggs: :local_total (:local_untracked untracked). With update_url: :catalog_total. Matched: :matched.',
         'error' => 'Something went wrong',
         'unauthorized' => 'You are not authorized to perform this Egg Browser action.',
+        'checking_disabled' => 'Update checks disabled',
+        'checking_enabled' => 'Update checks enabled',
     ],
 ];

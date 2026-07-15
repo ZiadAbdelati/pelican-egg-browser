@@ -58,20 +58,22 @@
                                 <td class="px-4 py-3">
                                     @if (\Community\EggBrowser\Filament\Admin\Pages\EggBrowserPage::canManage())
                                         <div class="flex flex-wrap gap-3">
+                                            @if ($this->canCheck($row))
+                                                <button
+                                                    type="button"
+                                                    wire:click="checkOne({{ $row->id }})"
+                                                    class="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
+                                                >
+                                                    {{ trans('egg-browser::strings.installed.check') }}
+                                                </button>
+                                            @endif
                                             <button
                                                 type="button"
-                                                wire:click="checkOne({{ $row->id }})"
+                                                wire:click="toggleChecking({{ $row->id }}, {{ $this->canCheck($row) ? 'true' : 'false' }})"
+                                                wire:confirm="{{ __($this->canCheck($row) ? 'egg-browser::strings.browser.disable_checking_help' : 'egg-browser::strings.browser.enable_checking_help') }}"
                                                 class="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
                                             >
-                                                {{ trans('egg-browser::strings.installed.check') }}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                wire:click="deleteEgg({{ $row->id }})"
-                                                wire:confirm="{{ __('egg-browser::strings.installed.delete_confirm') }}"
-                                                class="rounded-lg border border-danger-300 px-2 py-1 text-xs text-danger-700 hover:bg-danger-50 dark:border-danger-700 dark:text-danger-300 dark:hover:bg-danger-950"
-                                            >
-                                                {{ __('egg-browser::strings.installed.delete') }}
+                                                {{ trans($this->canCheck($row) ? 'egg-browser::strings.browser.disable_checking' : 'egg-browser::strings.browser.enable_checking') }}
                                             </button>
                                         </div>
                                     @endif

@@ -58,12 +58,21 @@ class TrackedEggsPage extends Page
         return Width::Full;
     }
 
+    protected function denyUnauthorized(): void
+    {
+        Notification::make()
+            ->title((string) __('egg-browser::strings.notifications.unauthorized'))
+            ->danger()
+            ->send();
+    }
+
     protected function getHeaderActions(): array
     {
         return [
             Action::make('checkAll')
                 ->label((string) __('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
+                ->visible(fn (): bool => EggBrowserPage::canManage())
                 ->action(function (): void {
                     try {
                         app(TrackedEggSyncService::class)->pruneOrphans();
@@ -85,6 +94,7 @@ class TrackedEggsPage extends Page
                 ->label((string) __('egg-browser::strings.installed.link_local'))
                 ->icon('tabler-link')
                 ->color('gray')
+                ->visible(fn (): bool => EggBrowserPage::canManage())
                 ->requiresConfirmation()
                 ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
                 ->action(function (): void {
@@ -147,6 +157,12 @@ class TrackedEggsPage extends Page
 
     public function checkOne(int $id): void
     {
+        if (!EggBrowserPage::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
         CheckTrackedEggJob::dispatchSync($id);
 
         $tracked = TrackedEgg::query()->find($id);
@@ -160,25 +176,20 @@ class TrackedEggsPage extends Page
 
     public function deleteEgg(int $trackedId): void
     {
+        if (!EggBrowserPage::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
         $tracked = TrackedEgg::query()->find($trackedId);
         if (!$tracked) {
             return;
         }
 
         try {
-            $egg = $tracked->egg_id ? \App\Models\Egg::query()->find($tracked->egg_id) : null;
-            if (!$egg && $tracked->egg_uuid) {
-                $egg = \App\Models\Egg::query()->where('uuid', $tracked->egg_uuid)->first();
-            }
-
-            $name = $egg?->name ?? $tracked->egg_name ?? "#{$trackedId}";
-
-            if ($egg) {
-                // Egg model blocks delete when servers still use it.
-                $egg->delete();
-            } else {
-                $tracked->delete();
-            }
+            $name = $tracked->egg_name ?? "#{$trackedId}";
+            $tracked->delete();
 
             Notification::make()
                 ->title((string) __('egg-browser::strings.installed.delete_success', ['name' => $name]))

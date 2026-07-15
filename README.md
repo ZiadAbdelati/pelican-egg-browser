@@ -21,7 +21,7 @@ Inspired by patterns used in official plugins on the [Pelican Hub marketplace](h
    - Defaults to the split `pelican-eggs/*` category repositories (minecraft, games-steamcmd, games-standalone, generic, voice, chatbots, database, storage, monitoring, software).
    - Admins can add any additional GitHub egg repos in settings.
    - Indexes via the GitHub Trees API with caching, timeouts, retries, and rate-limit aware errors.
-   - Search + filters: free text, repository, category, install status.
+   - Search + filters: free text, repository, category, tag, install status.
    - Paginated card grid with name, category, short description, blob revision, and install status.
 
 2. **Egg detail view**
@@ -40,8 +40,8 @@ Inspired by patterns used in official plugins on the [Pelican Hub marketplace](h
      - `Unknown/unlinked`
      - `Check failed`
      - `Not installed`
-   - On-demand check (single egg or all) and optional scheduled checks (default every 6 hours).
-   - Structured section diff: metadata, startup, docker images, variables, scripts, config files, install script, features, file denylist, tags.
+   - On-demand check (single egg or all) and optional scheduled checks (default daily at 03:00).
+   - Structured section diff: metadata, startup, docker images, variables, scripts, config files, install script, features, file denylist.
    - Updates overwrite in place; **force required** when local changes are detected.
 
 > **Note on nests:** Modern Pelican replaced nests with **tags**. This plugin’s “nest mapping” is implemented as a configurable **tag strategy** (repository / category / custom / ask).
@@ -88,14 +88,14 @@ php artisan queue:work
 
 ### Permissions
 
-The plugin registers admin permissions under `egg_browser`:
+The plugin registers admin permissions for the custom `egg_browser` permission model:
 
 | Permission | Purpose |
 |---|---|
-| `egg_browser.view` | Browse catalog / tracked list |
-| `egg_browser.install` | Install eggs |
-| `egg_browser.update` | Apply updates |
-| `egg_browser.manage` | Settings & bulk checks |
+| `view egg_browser` | Browse catalog / tracked list |
+| `install egg_browser` | Install eggs |
+| `update egg_browser` | Apply updates |
+| `manage egg_browser` | Settings, linking, and bulk checks |
 
 Root admins always have access. Grant the custom permissions on roles as needed.
 

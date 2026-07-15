@@ -25,6 +25,7 @@ return [
         'all_repositories' => 'All repositories',
         'all_categories' => 'All categories',
         'all_statuses' => 'All statuses',
+        'all_tags' => 'All tags',
         'refresh_index' => 'Refresh index',
         'refreshing' => 'Refreshing repository indexes…',
         'check_updates' => 'Check updates',
@@ -90,9 +91,9 @@ return [
         'check' => 'Check',
         'open_detail' => 'Open in browser',
         'link_local' => 'Link installed eggs',
-        'delete' => 'Delete',
-        'delete_confirm' => 'Delete this panel egg and its tracking row? Servers using the egg must be removed first.',
-        'delete_success' => 'Deleted egg ":name".',
+        'delete' => 'Unlink',
+        'delete_confirm' => 'Remove this tracking row? The panel egg will not be deleted.',
+        'delete_success' => 'Unlinked tracking for ":name".',
     ],
 
     'status' => [
@@ -145,5 +146,6 @@ return [
         'link_done' => 'Linked :linked eggs (:checked checked, :skipped already tracked)',
         'link_stats' => 'Local eggs: :local_total (:local_untracked untracked). With update_url: :catalog_total. Matched: :matched.',
         'error' => 'Something went wrong',
+        'unauthorized' => 'You are not authorized to perform this Egg Browser action.',
     ],
 ];

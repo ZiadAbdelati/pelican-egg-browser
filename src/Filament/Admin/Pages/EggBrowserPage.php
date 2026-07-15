@@ -12,7 +12,6 @@ use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Community\EggBrowser\Services\TrackedEggSyncService;
 use Filament\Actions\Action;
-use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
@@ -45,6 +44,7 @@ class EggBrowserPage extends Page implements HasTable
 
     public string $filterCategory = '';
 
+    public string $filterTag = '';
     public string $filterStatus = '';
 
     public int $catalogPage = 1;
@@ -65,6 +65,9 @@ class EggBrowserPage extends Page implements HasTable
 
     /** @var array<string, string> */
     public array $categoryOptions = [];
+
+    /** @var array<string, string> */
+    public array $tagOptions = [];
 
     /** @var array<string, string> */
     public array $statusOptions = [];
@@ -100,17 +103,69 @@ class EggBrowserPage extends Page implements HasTable
 
     public static function canAccess(): bool
     {
+        return self::canView();
+    }
+
+    public static function canView(): bool
+    {
+        if (self::canPluginPermission('view')) {
+            return true;
+        }
+
         $user = auth()->user();
 
+        return $user && method_exists($user, 'can') && (
+            $user->can('viewList egg') || $user->can('view egg')
+        );
+    }
+
+    public static function canInstall(): bool
+    {
+        if (self::canPluginPermission('install')) {
+            return true;
+        }
+
+        $user = auth()->user();
+
+        return $user && method_exists($user, 'can') && $user->can('create egg');
+    }
+
+    public static function canUpdateEggs(): bool
+    {
+        if (self::canPluginPermission('update')) {
+            return true;
+        }
+
+        $user = auth()->user();
+
+        return $user && method_exists($user, 'can') && $user->can('update egg');
+    }
+
+    public static function canManage(): bool
+    {
+        return self::canPluginPermission('manage');
+    }
+
+    protected static function canPluginPermission(string $permission): bool
+    {
+        $user = auth()->user();
         if (!$user) {
             return false;
         }
 
-        if (method_exists($user, 'can') && ($user->can('egg_browser.view') || $user->can('admin.*') || $user->can('egg.*'))) {
+        if (method_exists($user, 'isRootAdmin') && $user->isRootAdmin()) {
             return true;
         }
 
-        return method_exists($user, 'isRootAdmin') ? (bool) $user->isRootAdmin() : true;
+        return method_exists($user, 'can') && $user->can("{$permission} egg_browser");
+    }
+
+    protected function denyUnauthorized(): void
+    {
+        Notification::make()
+            ->title((string) __('egg-browser::strings.notifications.unauthorized'))
+            ->danger()
+            ->send();
     }
 
     public function getMaxContentWidth(): Width|string|null
@@ -126,12 +181,18 @@ class EggBrowserPage extends Page implements HasTable
 
         $this->activeTab = $tab;
     }
-    public function table(Table $table): Table
 
+    public function table(Table $table): Table
     {
         return $table
             ->query(TrackedEgg::query()->with('egg'))
             ->defaultSort('egg_name')
+            ->heading((string) __('egg-browser::strings.tabs.manage'))
+            ->description((string) __('egg-browser::strings.installed.subtitle'))
+            ->headerActions([
+                $this->linkLocalAction(),
+                $this->checkAllAction(),
+            ])
             ->columns([
                 TextColumn::make('egg_name')
                     ->label('Egg')
@@ -160,124 +221,141 @@ class EggBrowserPage extends Page implements HasTable
                     ->label((string) __('egg-browser::strings.installed.check'))
                     ->icon('tabler-cloud-search')
                     ->color('gray')
+                    ->visible(fn (): bool => self::canManage())
                     ->action(fn (TrackedEgg $record) => $this->checkOne($record->id)),
-                DeleteAction::make('delete')
+                Action::make('unlink')
                     ->label((string) __('egg-browser::strings.installed.delete'))
+                    ->icon('tabler-unlink')
+                    ->color('danger')
+                    ->requiresConfirmation()
                     ->modalDescription((string) __('egg-browser::strings.installed.delete_confirm'))
+                    ->visible(fn (): bool => self::canManage())
                     ->action(fn (TrackedEgg $record) => $this->deleteEgg($record->id)),
             ]);
     }
 
     protected function getHeaderActions(): array
     {
-        if ($this->activeTab === 'manage') {
-            return [
-                Action::make('checkAll')
-                    ->label((string) __('egg-browser::strings.browser.check_updates'))
-                    ->icon('tabler-cloud-search')
-                    ->action(function (): void {
-                        try {
-                            app(TrackedEggSyncService::class)->pruneOrphans();
-                            CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
+        return [];
+    }
 
-                            Notification::make()
-                                ->title((string) __('egg-browser::strings.notifications.check_done'))
-                                ->success()
-                                ->send();
-                        } catch (Throwable $e) {
-                            Notification::make()
-                                ->title((string) __('egg-browser::strings.notifications.error'))
-                                ->body($e->getMessage())
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-                Action::make('linkLocal')
-                    ->label((string) __('egg-browser::strings.browser.link_local'))
-                    ->icon('tabler-link')
-                    ->color('gray')
-                    ->requiresConfirmation()
-                    ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
-                    ->action(function (): void {
-                        try {
-                            app(TrackedEggSyncService::class)->pruneOrphans();
-                            $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
+    protected function checkAllAction(): Action
+    {
+        return Action::make('checkAll')
+            ->label((string) __('egg-browser::strings.browser.check_updates'))
+            ->icon('tabler-cloud-search')
+            ->visible(fn (): bool => self::canManage())
+            ->action(function (): void {
+                try {
+                    app(TrackedEggSyncService::class)->pruneOrphans();
+                    CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
 
-                            $body = (string) __('egg-browser::strings.notifications.link_stats', [
-                                'local_total' => $result['stats']['local_total'] ?? 0,
-                                'local_untracked' => $result['stats']['local_untracked'] ?? 0,
-                                'catalog_total' => $result['stats']['catalog_total'] ?? 0,
-                                'matched' => $result['stats']['matched'] ?? 0,
-                            ]);
-                            if (!empty($result['errors'])) {
-                                $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
-                            }
+                    Notification::make()
+                        ->title((string) __('egg-browser::strings.notifications.check_done'))
+                        ->success()
+                        ->send();
+                } catch (Throwable $e) {
+                    Notification::make()
+                        ->title((string) __('egg-browser::strings.notifications.error'))
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+                }
+            });
+    }
 
-                            Notification::make()
-                                ->title((string) __('egg-browser::strings.notifications.link_done', [
-                                    'linked' => $result['linked'],
-                                    'checked' => $result['checked'],
-                                    'skipped' => $result['skipped'],
-                                ]))
-                                ->body($body)
-                                ->success()
-                                ->send();
-                        } catch (Throwable $e) {
-                            Notification::make()
-                                ->title((string) __('egg-browser::strings.notifications.error'))
-                                ->body($e->getMessage())
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-            ];
+    protected function linkLocalAction(): Action
+    {
+        return Action::make('linkLocal')
+            ->label((string) __('egg-browser::strings.browser.link_local'))
+            ->icon('tabler-link')
+            ->color('gray')
+            ->visible(fn (): bool => self::canManage())
+            ->requiresConfirmation()
+            ->modalDescription((string) __('egg-browser::strings.browser.link_local_help'))
+            ->action(function (): void {
+                try {
+                    app(TrackedEggSyncService::class)->pruneOrphans();
+                    $result = app(EggInstallService::class)->linkLocalMatches(checkUpstream: true);
+
+                    $body = (string) __('egg-browser::strings.notifications.link_stats', [
+                        'local_total' => $result['stats']['local_total'] ?? 0,
+                        'local_untracked' => $result['stats']['local_untracked'] ?? 0,
+                        'catalog_total' => $result['stats']['catalog_total'] ?? 0,
+                        'matched' => $result['stats']['matched'] ?? 0,
+                    ]);
+                    if (!empty($result['errors'])) {
+                        $body .= "\n" . implode("\n", array_slice($result['errors'], 0, 5));
+                    }
+
+                    Notification::make()
+                        ->title((string) __('egg-browser::strings.notifications.link_done', [
+                            'linked' => $result['linked'],
+                            'checked' => $result['checked'],
+                            'skipped' => $result['skipped'],
+                        ]))
+                        ->body($body)
+                        ->success()
+                        ->send();
+                } catch (Throwable $e) {
+                    Notification::make()
+                        ->title((string) __('egg-browser::strings.notifications.error'))
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+                }
+            });
+    }
+
+    public function refreshIndex(): void
+    {
+        if (!self::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
         }
 
-        return [
-            Action::make('refreshIndex')
-                ->label((string) __('egg-browser::strings.browser.refresh_index'))
-                ->icon('tabler-refresh')
-                ->color('primary')
-                ->requiresConfirmation()
-                ->action(function (): void {
-                    try {
-                        app(EggIndexService::class)->forgetCache();
-                        app(EggIndexService::class)->allEggs(forceRefresh: true);
-                        $this->reloadCatalog();
+        try {
+            app(EggIndexService::class)->forgetCache();
+            app(EggIndexService::class)->allEggs(forceRefresh: true);
+            $this->reloadCatalog();
 
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.index_refreshed'))
-                            ->success()
-                            ->send();
-                    } catch (Throwable $e) {
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.error'))
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
-            Action::make('checkUpdates')
-                ->label((string) __('egg-browser::strings.browser.check_updates'))
-                ->icon('tabler-cloud-search')
-                ->action(function (): void {
-                    try {
-                        CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
-                        $this->reloadCatalog();
+            Notification::make()
+                ->title((string) __('egg-browser::strings.notifications.index_refreshed'))
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()
+                ->title((string) __('egg-browser::strings.notifications.error'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }
 
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.check_done'))
-                            ->success()
-                            ->send();
-                    } catch (Throwable $e) {
-                        Notification::make()
-                            ->title((string) __('egg-browser::strings.notifications.error'))
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
-        ];
+    public function checkUpdates(): void
+    {
+        if (!self::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
+        try {
+            CheckAllTrackedEggsJob::dispatchSync(refreshIndex: false);
+            $this->reloadCatalog();
+
+            Notification::make()
+                ->title((string) __('egg-browser::strings.notifications.check_done'))
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()
+                ->title((string) __('egg-browser::strings.notifications.error'))
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
     }
 
     public function updatedSearch($value = null): void
@@ -297,6 +375,13 @@ class EggBrowserPage extends Page implements HasTable
     public function updatedFilterCategory($value = null): void
     {
         $this->filterCategory = $this->scalarString($value ?? $this->filterCategory);
+        $this->catalogPage = 1;
+        $this->reloadCatalog();
+    }
+
+    public function updatedFilterTag($value = null): void
+    {
+        $this->filterTag = $this->scalarString($value ?? $this->filterTag);
         $this->catalogPage = 1;
         $this->reloadCatalog();
     }
@@ -346,6 +431,12 @@ class EggBrowserPage extends Page implements HasTable
 
     public function checkOne(int $id): void
     {
+        if (!self::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
         CheckTrackedEggJob::dispatchSync($id);
 
         $tracked = TrackedEgg::query()->find($id);
@@ -359,24 +450,20 @@ class EggBrowserPage extends Page implements HasTable
 
     public function deleteEgg(int $trackedId): void
     {
+        if (!self::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
         $tracked = TrackedEgg::query()->find($trackedId);
         if (!$tracked) {
             return;
         }
 
         try {
-            $egg = $tracked->egg_id ? \App\Models\Egg::query()->find($tracked->egg_id) : null;
-            if (!$egg && $tracked->egg_uuid) {
-                $egg = \App\Models\Egg::query()->where('uuid', $tracked->egg_uuid)->first();
-            }
-
-            $name = $egg?->name ?? $tracked->egg_name ?? "#{$trackedId}";
-
-            if ($egg) {
-                $egg->delete();
-            } else {
-                $tracked->delete();
-            }
+            $name = $tracked->egg_name ?? "#{$trackedId}";
+            $tracked->delete();
 
             Notification::make()
                 ->title((string) __('egg-browser::strings.installed.delete_success', ['name' => $name]))
@@ -430,6 +517,7 @@ class EggBrowserPage extends Page implements HasTable
         $this->filterRepository = $this->scalarString($this->filterRepository);
         $this->filterCategory = $this->scalarString($this->filterCategory);
         $this->filterStatus = $this->scalarString($this->filterStatus);
+        $this->filterTag = $this->scalarString($this->filterTag);
 
         $index = app(EggIndexService::class);
         $statusService = app(EggStatusService::class);
@@ -453,6 +541,27 @@ class EggBrowserPage extends Page implements HasTable
                     ->mapWithKeys(fn ($c) => [(string) $c => (string) $c])
                     ->all()
             );
+
+            $this->tagOptions = $this->stringifyOptions(
+                $eggs->flatMap(fn (array $egg): array => is_array($egg['tags'] ?? null) ? $egg['tags'] : [])
+                    ->filter(fn ($tag) => is_string($tag) && $tag !== '')
+                    ->unique()
+                    ->sort()
+                    ->mapWithKeys(fn ($tag) => [(string) $tag => (string) $tag])
+                    ->all()
+            );
+
+            if ($this->filterTag !== '') {
+                $eggs = $eggs->filter(function (array $egg): bool {
+                    foreach ((array) ($egg['tags'] ?? []) as $tag) {
+                        if (strcasecmp($this->scalarString($tag), $this->filterTag) === 0) {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                })->values();
+            }
 
             $cards = $eggs->map(function (array $egg) use ($statusService): array {
                 try {

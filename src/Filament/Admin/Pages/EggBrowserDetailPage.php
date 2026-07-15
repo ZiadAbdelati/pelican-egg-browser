@@ -98,6 +98,14 @@ class EggBrowserDetailPage extends Page
         return Width::SevenExtraLarge;
     }
 
+    protected function denyUnauthorized(): void
+    {
+        Notification::make()
+            ->title((string) __('egg-browser::strings.notifications.unauthorized'))
+            ->danger()
+            ->send();
+    }
+
     protected function getHeaderActions(): array
     {
         $actions = [
@@ -127,6 +135,7 @@ class EggBrowserDetailPage extends Page
                 ->label(trans('egg-browser::strings.browser.install'))
                 ->icon('tabler-download')
                 ->color('primary')
+                ->visible(fn (): bool => EggBrowserPage::canInstall())
                 ->form([
                     TagsInput::make('tags')
                         ->label(trans('egg-browser::strings.browser.install_tags'))
@@ -140,13 +149,14 @@ class EggBrowserDetailPage extends Page
                 ->label(trans('egg-browser::strings.browser.check_updates'))
                 ->icon('tabler-cloud-search')
                 ->color('gray')
+                ->visible(fn (): bool => EggBrowserPage::canManage())
                 ->action(fn () => $this->checkNow());
 
             $actions[] = Action::make('update')
                 ->label(trans('egg-browser::strings.browser.update'))
                 ->icon('tabler-arrow-up-circle')
                 ->color('warning')
-                ->visible(fn () => in_array($this->statusValue, [
+                ->visible(fn () => EggBrowserPage::canUpdateEggs() && in_array($this->statusValue, [
                     EggInstallStatus::UpdateAvailable->value,
                     EggInstallStatus::LocalChangesAndUpdate->value,
                     EggInstallStatus::LocalChanges->value,
@@ -377,6 +387,12 @@ class EggBrowserDetailPage extends Page
             return;
         }
 
+        if (!EggBrowserPage::canInstall()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
         try {
             $egg = app(EggInstallService::class)->install($this->catalogEgg, tags: $tags ?: null);
 
@@ -398,6 +414,12 @@ class EggBrowserDetailPage extends Page
     public function updateEgg(bool $force = false): void
     {
         if (!$this->catalogEgg) {
+            return;
+        }
+
+        if (!EggBrowserPage::canUpdateEggs()) {
+            $this->denyUnauthorized();
+
             return;
         }
 
@@ -427,6 +449,12 @@ class EggBrowserDetailPage extends Page
 
     public function checkNow(): void
     {
+        if (!EggBrowserPage::canManage()) {
+            $this->denyUnauthorized();
+
+            return;
+        }
+
         if ($this->trackedId) {
             CheckTrackedEggJob::dispatchSync($this->trackedId);
         }

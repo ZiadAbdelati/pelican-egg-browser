@@ -138,8 +138,9 @@ class EggStatusService
                 $tracked->last_error = null;
             }
 
-            $installedFingerprint = $tracked?->installed_fingerprint;
-            $currentFingerprint = $localEgg ? $this->fingerprintLocalEgg($localEgg) : null;
+            $installedFingerprint = is_string($tracked?->installed_fingerprint) ? $tracked->installed_fingerprint : null;
+            $localParsed = $localEgg ? $this->exportLocalAsArray($localEgg) : null;
+            $currentFingerprint = $localParsed ? $this->normalizer->fingerprint($localParsed) : null;
 
             $status = $this->computeStatus(
                 installed: is_string($installedFingerprint) ? $installedFingerprint : null,
@@ -156,17 +157,10 @@ class EggStatusService
                     $tracked->egg_name = $localEgg->name;
                 }
 
-                // Keep the install snapshot honest after external panel updates.
-                if (
-                    $status === EggInstallStatus::UpToDate
-                    && $currentFingerprint
-                    && $installedFingerprint
-                    && !hash_equals($installedFingerprint, $currentFingerprint)
-                ) {
+                if ($status === EggInstallStatus::UpToDate && $localParsed && $currentFingerprint !== $installedFingerprint) {
                     $tracked->installed_fingerprint = $currentFingerprint;
-                    $tracked->installed_snapshot = $this->normalizer->normalize(
-                        $this->exportLocalAsArray($localEgg)
-                    );
+                    $tracked->installed_snapshot = $this->normalizer->normalize($localParsed);
+                    $installedFingerprint = $currentFingerprint;
                 }
 
                 $tracked->save();
@@ -286,28 +280,34 @@ class EggStatusService
             return EggInstallStatus::SourceUnavailable;
         }
 
-        // Live panel content is the source of truth for "do I need an update?"
-        $compare = $current ?? $installed;
-        if ($compare === null) {
+        if ($current === null) {
             return EggInstallStatus::UnknownUnlinked;
         }
 
-        $matchesUpstream = hash_equals($compare, $upstream);
-        $localDirty = $installed !== null
-            && $current !== null
-            && !hash_equals($installed, $current);
-
-        // If the live egg already matches upstream, it is up to date even if the
-        // install-time snapshot is stale (e.g. updated via the panel egg updater).
-        if ($matchesUpstream) {
+        if (hash_equals($current, $upstream)) {
             return EggInstallStatus::UpToDate;
         }
 
-        if ($localDirty) {
+        if ($installed === null) {
+            return EggInstallStatus::UpdateAvailable;
+        }
+
+        $localDirty = !hash_equals($installed, $current);
+        $updateAvailable = !hash_equals($installed, $upstream);
+
+        if ($localDirty && $updateAvailable) {
             return EggInstallStatus::LocalChangesAndUpdate;
         }
 
-        return EggInstallStatus::UpdateAvailable;
+        if ($localDirty) {
+            return EggInstallStatus::LocalChanges;
+        }
+
+        if ($updateAvailable) {
+            return EggInstallStatus::UpdateAvailable;
+        }
+
+        return EggInstallStatus::UpToDate;
     }
 
     /**

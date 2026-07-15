@@ -56,23 +56,25 @@
                                     {{ $row->last_checked_at?->diffForHumans() ?? '—' }}
                                 </td>
                                 <td class="px-4 py-3">
-                                    <div class="flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            wire:click="checkOne({{ $row->id }})"
-                                            class="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
-                                        >
-                                            {{ trans('egg-browser::strings.installed.check') }}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            wire:click="deleteEgg({{ $row->id }})"
-                                            wire:confirm="{{ __('egg-browser::strings.installed.delete_confirm') }}"
-                                            class="rounded-lg border border-danger-300 px-2 py-1 text-xs text-danger-700 hover:bg-danger-50 dark:border-danger-700 dark:text-danger-300 dark:hover:bg-danger-950"
-                                        >
-                                            {{ __('egg-browser::strings.installed.delete') }}
-                                        </button>
-                                    </div>
+                                    @if (\Community\EggBrowser\Filament\Admin\Pages\EggBrowserPage::canManage())
+                                        <div class="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                wire:click="checkOne({{ $row->id }})"
+                                                class="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
+                                            >
+                                                {{ trans('egg-browser::strings.installed.check') }}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="deleteEgg({{ $row->id }})"
+                                                wire:confirm="{{ __('egg-browser::strings.installed.delete_confirm') }}"
+                                                class="rounded-lg border border-danger-300 px-2 py-1 text-xs text-danger-700 hover:bg-danger-50 dark:border-danger-700 dark:text-danger-300 dark:hover:bg-danger-950"
+                                            >
+                                                {{ __('egg-browser::strings.installed.delete') }}
+                                            </button>
+                                        </div>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach

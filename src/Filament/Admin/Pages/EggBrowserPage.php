@@ -88,14 +88,8 @@ class EggBrowserPage extends Page
 
     public static function getNavigationGroup(): ?string
     {
-        // Match the stock Eggs resource group; required for child navigation items.
+        // Same sidebar group as Pelican's stock Eggs resource, but not nested under it.
         return \App\Filament\Admin\Resources\Eggs\EggResource::getNavigationGroup();
-    }
-
-    public static function getNavigationParentItem(): ?string
-    {
-        // Filament supports parent labels; this matches Pelican's stock Eggs nav label.
-        return \App\Filament\Admin\Resources\Eggs\EggResource::getNavigationLabel();
     }
 
     public static function canAccess(): bool

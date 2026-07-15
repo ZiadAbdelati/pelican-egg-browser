@@ -57,7 +57,7 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     @if (\Community\EggBrowser\Filament\Admin\Pages\EggBrowserPage::canManage())
-                                        <div class="flex flex-wrap gap-2">
+                                        <div class="flex flex-wrap gap-3">
                                             <button
                                                 type="button"
                                                 wire:click="checkOne({{ $row->id }})"

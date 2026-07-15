@@ -1,28 +1,36 @@
 <x-filament-panels::page>
-    <div class="space-y-6">
+    <div class="space-y-6" x-data="{ activeTab: @js($activeTab) }">
         <div class="fi-sc-tabs">
-            <x-filament::tabs label="Egg Browser sections" role="tablist">
-                <x-filament::tabs.item
-                    :active="$activeTab === 'browser'"
-                    icon="tabler-world-search"
-                    wire:click="setActiveTab('browser')"
+            <div class="flex gap-1 rounded-xl bg-gray-50 p-1 text-sm font-medium ring-1 ring-gray-950/5 dark:bg-white/5 dark:ring-white/10" role="tablist" aria-label="Egg Browser sections">
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-lg px-3 py-2 transition"
+                    x-bind:class="activeTab === 'browser' ? 'bg-white text-primary-600 shadow-sm dark:bg-gray-900 dark:text-primary-400' : 'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'"
+                    x-on:click="activeTab = 'browser'; history.replaceState(null, '', new URL(Object.assign(new URL(window.location.href), { search: new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(window.location.search)), activeTab: 'browser' }).toString() })).toString())"
+                    role="tab"
+                    x-bind:aria-selected="activeTab === 'browser'"
                 >
+                    <x-filament::icon icon="tabler-world-search" class="h-5 w-5" />
                     {{ __('egg-browser::strings.tabs.browser') }}
-                </x-filament::tabs.item>
+                </button>
 
-                <x-filament::tabs.item
-                    :active="$activeTab === 'manage'"
-                    icon="tabler-packages"
-                    wire:click="setActiveTab('manage')"
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-lg px-3 py-2 transition"
+                    x-bind:class="activeTab === 'manage' ? 'bg-white text-primary-600 shadow-sm dark:bg-gray-900 dark:text-primary-400' : 'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'"
+                    x-on:click="activeTab = 'manage'; history.replaceState(null, '', new URL(Object.assign(new URL(window.location.href), { search: new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(window.location.search)), activeTab: 'manage' }).toString() })).toString())"
+                    role="tab"
+                    x-bind:aria-selected="activeTab === 'manage'"
                 >
+                    <x-filament::icon icon="tabler-packages" class="h-5 w-5" />
                     {{ __('egg-browser::strings.tabs.manage') }}
-                </x-filament::tabs.item>
-            </x-filament::tabs>
+                </button>
+            </div>
         </div>
 
-        @if ($activeTab === 'browser')
+        <div x-show="activeTab === 'browser'" x-cloak>
             <div class="rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
-                <div class="space-y-6 p-4 sm:p-6">
+                <div class="space-y-6 p-6">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <h2 class="text-base font-semibold text-gray-950 dark:text-white">
@@ -161,11 +169,11 @@
                                         class="group flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-950"
                                         wire:key="egg-{{ md5($egg['key']) }}"
                                     >
-                                        <div class="mb-2 flex items-start justify-between gap-2">
-                                            <h3 class="font-semibold text-gray-900 group-hover:text-primary-600 dark:text-white">
+                                        <div class="mb-2 flex items-start justify-between gap-3">
+                                            <h3 class="min-w-0 flex-1 font-semibold text-gray-900 group-hover:text-primary-600 dark:text-white">
                                                 {{ $egg['name'] }}
                                             </h3>
-                                            <span class="{{ $this->cardStatusBadgeClass($egg['status_color']) }}">
+                                            <span class="shrink-0 whitespace-nowrap {{ $this->cardStatusBadgeClass($egg['status_color']) }}">
                                                 {{ $egg['status_label'] }}
                                             </span>
                                         </div>
@@ -218,8 +226,10 @@
                     </div>
                 </div>
             </div>
-        @else
+        </div>
+
+        <div x-show="activeTab === 'manage'" x-cloak>
             {{ $this->table }}
-        @endif
+        </div>
     </div>
 </x-filament-panels::page>

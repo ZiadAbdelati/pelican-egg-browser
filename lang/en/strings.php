@@ -88,7 +88,7 @@ return [
         'empty' => 'No eggs tracked yet. Install from the browser, or use Link installed eggs for older imports.',
         'source' => 'Source',
         'last_checked' => 'Last checked',
-        'check' => 'Check',
+        'check' => 'Check update',
         'open_detail' => 'Open in browser',
         'link_local' => 'Link installed eggs',
         'delete' => 'Unlink',

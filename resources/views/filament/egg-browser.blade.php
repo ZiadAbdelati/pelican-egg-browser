@@ -1,31 +1,23 @@
 <x-filament-panels::page>
     <div class="space-y-6" x-data="{ activeTab: @js($activeTab) }">
         <div class="fi-sc-tabs">
-            <div class="flex gap-1 rounded-xl bg-gray-50 p-1 text-sm font-medium ring-1 ring-gray-950/5 dark:bg-white/5 dark:ring-white/10" role="tablist" aria-label="Egg Browser sections">
-                <button
-                    type="button"
-                    class="inline-flex items-center gap-2 rounded-lg px-3 py-2 transition"
-                    x-bind:class="activeTab === 'browser' ? 'bg-white text-primary-600 shadow-sm dark:bg-gray-900 dark:text-primary-400' : 'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'"
+            <x-filament::tabs label="Egg Browser sections" role="tablist">
+                <x-filament::tabs.item
+                    alpine-active="activeTab === 'browser'"
+                    icon="tabler-world-search"
                     x-on:click="activeTab = 'browser'; history.replaceState(null, '', new URL(Object.assign(new URL(window.location.href), { search: new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(window.location.search)), activeTab: 'browser' }).toString() })).toString())"
-                    role="tab"
-                    x-bind:aria-selected="activeTab === 'browser'"
                 >
-                    <x-filament::icon icon="tabler-world-search" class="h-5 w-5" />
                     {{ __('egg-browser::strings.tabs.browser') }}
-                </button>
+                </x-filament::tabs.item>
 
-                <button
-                    type="button"
-                    class="inline-flex items-center gap-2 rounded-lg px-3 py-2 transition"
-                    x-bind:class="activeTab === 'manage' ? 'bg-white text-primary-600 shadow-sm dark:bg-gray-900 dark:text-primary-400' : 'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'"
+                <x-filament::tabs.item
+                    alpine-active="activeTab === 'manage'"
+                    icon="tabler-packages"
                     x-on:click="activeTab = 'manage'; history.replaceState(null, '', new URL(Object.assign(new URL(window.location.href), { search: new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(window.location.search)), activeTab: 'manage' }).toString() })).toString())"
-                    role="tab"
-                    x-bind:aria-selected="activeTab === 'manage'"
                 >
-                    <x-filament::icon icon="tabler-packages" class="h-5 w-5" />
                     {{ __('egg-browser::strings.tabs.manage') }}
-                </button>
-            </div>
+                </x-filament::tabs.item>
+            </x-filament::tabs>
         </div>
 
         <div x-show="activeTab === 'browser'" x-cloak>

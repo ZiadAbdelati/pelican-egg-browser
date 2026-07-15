@@ -221,6 +221,68 @@ class EggIndexService
         return null;
     }
 
+    /**
+     * Persist manifest metadata discovered on a detail page so cheap list status
+     * matching can use UUID/name without fetching every manifest.
+     *
+     * @param  array<array-key, mixed>  $manifest
+     */
+    public function rememberManifestMetadata(array $catalogEgg, array $manifest): void
+    {
+        $owner = $this->asString($catalogEgg['owner'] ?? '');
+        $repo = $this->asString($catalogEgg['repo'] ?? '');
+        $branch = $this->asString($catalogEgg['branch'] ?? 'main') ?: 'main';
+        $path = $this->asString($catalogEgg['path'] ?? '');
+
+        if ($owner === '' || $repo === '' || $path === '') {
+            return;
+        }
+
+        $row = RepositoryCache::query()
+            ->where('owner', $owner)
+            ->where('name', $repo)
+            ->where('branch', $branch)
+            ->first();
+
+        if (!$row || !is_array($row->eggs)) {
+            return;
+        }
+
+        $changed = false;
+        $eggs = array_map(function (array $egg) use ($path, $manifest, &$changed): array {
+            if ($this->asString($egg['path'] ?? '') !== $path) {
+                return $egg;
+            }
+
+            foreach (['name', 'description', 'author', 'uuid'] as $field) {
+                $value = $this->asString($manifest[$field] ?? null);
+                if ($value !== '' && $this->asString($egg[$field] ?? null) !== $value) {
+                    $egg[$field] = $value;
+                    $changed = true;
+                }
+            }
+
+            if (is_array($manifest['tags'] ?? null)) {
+                $tags = array_values(array_filter(array_map(fn ($tag) => $this->asString($tag), $manifest['tags'])));
+                if ($tags !== [] && ($egg['tags'] ?? []) !== $tags) {
+                    $egg['tags'] = $tags;
+                    $changed = true;
+                }
+            }
+
+            return $egg;
+        }, $row->eggs);
+
+        if (!$changed) {
+            return;
+        }
+
+        $normalized = array_values(array_map(fn ($egg) => $this->normalizeEggRecord((array) $egg), $eggs));
+        $row->eggs = $normalized;
+        $row->save();
+        Cache::put($this->cacheKey($owner, $repo, $branch), $normalized, (int) config('egg-browser.cache.index_ttl', 3600));
+    }
+
     public function forgetCache(?string $owner = null, ?string $name = null, ?string $branch = null): void
     {
         if ($owner && $name) {

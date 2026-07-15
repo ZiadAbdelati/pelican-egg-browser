@@ -268,6 +268,7 @@ class EggBrowserDetailPage extends Page
             );
             $this->catalogEgg['author'] = $this->manifest['author'] ?? $this->catalogEgg['author'];
             $this->catalogEgg['uuid'] = $this->manifest['uuid'] ?? $this->catalogEgg['uuid'];
+            app(EggIndexService::class)->rememberManifestMetadata($this->catalogEgg, $this->manifest);
         } catch (\Throwable $e) {
             $this->error = $e->getMessage();
             $this->manifest = null;

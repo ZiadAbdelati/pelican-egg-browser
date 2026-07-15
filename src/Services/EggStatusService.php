@@ -108,17 +108,6 @@ class EggStatusService
             ];
         }
 
-        if ($localEgg && !$tracked) {
-            return [
-                'status' => EggInstallStatus::UnknownUnlinked,
-                'tracked' => $tracked,
-                'local_egg' => $localEgg,
-                'upstream_fingerprint' => null,
-                'installed_fingerprint' => null,
-                'current_fingerprint' => null,
-                'error' => null,
-            ];
-        }
 
         try {
             $manifest = $this->manifests->fetch(
@@ -129,6 +118,26 @@ class EggStatusService
             );
             $upstreamParsed = $manifest['parsed'];
             $upstreamFingerprint = $this->normalizer->fingerprint($upstreamParsed);
+
+            if ($localEgg && !$tracked) {
+                $tracked = TrackedEgg::query()->updateOrCreate(
+                    [
+                        'source_owner' => $owner,
+                        'source_repo' => $repo,
+                        'source_path' => $path,
+                    ],
+                    [
+                        'egg_id' => $localEgg->id,
+                        'source_branch' => $branch,
+                        'source_sha' => $this->asString($catalogEgg['tree_sha'] ?? null),
+                        'source_blob_sha' => $this->asString($catalogEgg['blob_sha'] ?? null),
+                        'egg_uuid' => $localEgg->uuid,
+                        'egg_name' => $localEgg->name,
+                        'last_error' => null,
+                        'last_installed_at' => now(),
+                    ]
+                );
+            }
 
             if ($tracked) {
                 $tracked->upstream_fingerprint = $upstreamFingerprint;

@@ -1,24 +1,22 @@
 <x-filament-panels::page>
     <div class="space-y-6">
-        <div class="flex flex-wrap items-center gap-3 border-b border-gray-200 dark:border-white/10">
-            <button
-                type="button"
+        <x-filament::tabs contained label="Egg Browser sections">
+            <x-filament::tabs.item
+                :active="$activeTab === 'browser'"
+                icon="tabler-world-search"
                 wire:click="setActiveTab('browser')"
-                class="inline-flex items-center gap-x-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition {{ $activeTab === 'browser' ? 'border-gray-950 text-gray-950 dark:border-white dark:text-white' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200' }}"
             >
-                <x-filament::icon icon="tabler-world-search" class="h-4 w-4 shrink-0" />
-                <span>{{ __('egg-browser::strings.tabs.browser') }}</span>
-            </button>
+                {{ __('egg-browser::strings.tabs.browser') }}
+            </x-filament::tabs.item>
 
-            <button
-                type="button"
+            <x-filament::tabs.item
+                :active="$activeTab === 'manage'"
+                icon="tabler-packages"
                 wire:click="setActiveTab('manage')"
-                class="inline-flex items-center gap-x-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition {{ $activeTab === 'manage' ? 'border-gray-950 text-gray-950 dark:border-white dark:text-white' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200' }}"
             >
-                <x-filament::icon icon="tabler-packages" class="h-4 w-4 shrink-0" />
-                <span>{{ __('egg-browser::strings.tabs.manage') }}</span>
-            </button>
-        </div>
+                {{ __('egg-browser::strings.tabs.manage') }}
+            </x-filament::tabs.item>
+        </x-filament::tabs>
 
         <div class="rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
             <div class="p-4 sm:p-6">
@@ -177,92 +175,10 @@
                         {{ __('egg-browser::strings.installed.subtitle') }}
                     </p>
 
-                    @if ($this->tracked->isEmpty())
-                        <div class="rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500 dark:border-gray-700">
-                            {{ __('egg-browser::strings.installed.empty') }}
-                        </div>
-                    @else
-                        <div class="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
-                            <div class="overflow-x-auto">
-                                <table class="w-full table-auto divide-y divide-gray-200 text-start dark:divide-white/5">
-                                    <thead class="divide-y divide-gray-200 dark:divide-white/5">
-                                        <tr class="bg-gray-50 dark:bg-white/5">
-                                            <th class="px-3 py-3.5 text-start text-sm font-semibold text-gray-950 dark:text-white sm:px-6">Egg</th>
-                                            <th class="px-3 py-3.5 text-start text-sm font-semibold text-gray-950 dark:text-white sm:px-6">{{ __('egg-browser::strings.installed.source') }}</th>
-                                            <th class="px-3 py-3.5 text-start text-sm font-semibold text-gray-950 dark:text-white sm:px-6">{{ __('egg-browser::strings.browser.status') }}</th>
-                                            <th class="px-3 py-3.5 text-start text-sm font-semibold text-gray-950 dark:text-white sm:px-6">{{ __('egg-browser::strings.installed.last_checked') }}</th>
-                                            <th class="px-3 py-3.5 text-end text-sm font-semibold text-gray-950 dark:text-white sm:px-6">{{ __('egg-browser::strings.browser.actions') }}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-gray-200 whitespace-nowrap dark:divide-white/5">
-                                    @foreach ($this->tracked as $row)
-                                        @php($detailUrl = $this->trackedDetailUrl($row))
-                                        <tr wire:key="tracked-{{ $row->id }}" class="transition hover:bg-gray-50 dark:hover:bg-white/5">
-                                            <td class="px-3 py-4 sm:px-6">
-                                                <a href="{{ $detailUrl }}" class="group block">
-                                                    <div class="flex items-center gap-x-2">
-                                                        <x-filament::icon icon="tabler-egg" class="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                                                        <div>
-                                                            <div class="font-medium text-gray-950 group-hover:underline dark:text-white">
-                                                                {{ $row->egg_name ?? ('#' . $row->egg_id) }}
-                                                            </div>
-                                                            <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $row->egg_uuid }}</div>
-                                                        </div>
-                                                    </div>
-                                                </a>
-                                            </td>
-                                            <td class="px-3 py-4 sm:px-6">
-                                                <a href="{{ $detailUrl }}" class="block hover:opacity-80">
-                                                    <div class="font-mono text-xs text-gray-700 dark:text-gray-300">
-                                                        {{ $row->source_owner }}/{{ $row->source_repo }}
-                                                    </div>
-                                                    <div class="max-w-xs truncate font-mono text-[11px] text-gray-500 dark:text-gray-400" title="{{ $row->source_path }}">
-                                                        {{ $row->source_path }}
-                                                    </div>
-                                                </a>
-                                            </td>
-                                            <td class="px-3 py-4 sm:px-6">
-                                                <span class="{{ $this->statusBadgeClass($row->status) }}">
-                                                    {{ $this->statusLabel($row->status) }}
-                                                </span>
-                                                @if ($row->last_error)
-                                                    <div class="mt-1 max-w-xs truncate text-xs text-danger-500" title="{{ $row->last_error }}">
-                                                        {{ $row->last_error }}
-                                                    </div>
-                                                @endif
-                                            </td>
-                                            <td class="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 sm:px-6">
-                                                {{ $row->last_checked_at?->diffForHumans() ?? '—' }}
-                                            </td>
-                                            <td class="px-3 py-4 sm:px-6">
-                                                <div class="flex justify-end gap-2">
-                                                    <button
-                                                        type="button"
-                                                        wire:click="checkOne({{ $row->id }})"
-                                                        class="inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-primary-600 transition hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/50"
-                                                    >
-                                                        {{ __('egg-browser::strings.installed.check') }}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        wire:click="deleteEgg({{ $row->id }})"
-                                                        wire:confirm="{{ __('egg-browser::strings.installed.delete_confirm') }}"
-                                                        class="inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-danger-600 transition hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-950/50"
-                                                    >
-                                                        {{ __('egg-browser::strings.installed.delete') }}
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                            </div>
-                    @endif
+                    {{ $this->table }}
                 </div>
             @endif
+            </div>
         </div>
-    </div>
     </div>
 </x-filament-panels::page>

@@ -12,15 +12,21 @@ use Community\EggBrowser\Services\EggStatusService;
 use Community\EggBrowser\Services\GitHubClient;
 use Community\EggBrowser\Services\TrackedEggSyncService;
 use Filament\Actions\Action;
+use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
 use Throwable;
 
-class EggBrowserPage extends Page
+class EggBrowserPage extends Page implements HasTable
 {
+    use InteractsWithTable;
     protected static string|\BackedEnum|null $navigationIcon = 'tabler-egg';
 
     protected static ?string $slug = 'egg-browser';
@@ -123,6 +129,47 @@ class EggBrowserPage extends Page
         if ($tab === 'manage') {
             app(TrackedEggSyncService::class)->pruneOrphans();
         }
+    }
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(TrackedEgg::query()->with('egg'))
+            ->defaultSort('egg_name')
+            ->columns([
+                TextColumn::make('egg_name')
+                    ->label('Egg')
+                    ->description(fn (TrackedEgg $record): string => $record->egg_uuid ?? '')
+                    ->icon('tabler-egg')
+                    ->searchable(),
+                TextColumn::make('source_repo')
+                    ->label((string) __('egg-browser::strings.installed.source'))
+                    ->description(fn (TrackedEgg $record): string => $record->source_path)
+                    ->formatStateUsing(fn (string $state, TrackedEgg $record): string => $record->source_owner . '/' . $state)
+                    ->searchable(),
+                TextColumn::make('status')
+                    ->label((string) __('egg-browser::strings.browser.status'))
+                    ->badge()
+                    ->color(fn (TrackedEgg $record): string => $this->statusColor($record->status))
+                    ->formatStateUsing(fn (string $state): string => $this->statusLabel($state))
+                    ->tooltip(fn (TrackedEgg $record): ?string => $record->last_error),
+                TextColumn::make('last_checked_at')
+                    ->label((string) __('egg-browser::strings.installed.last_checked'))
+                    ->since()
+                    ->placeholder('—'),
+            ])
+            ->recordUrl(fn (TrackedEgg $record): string => $this->trackedDetailUrl($record))
+            ->recordActions([
+                Action::make('check')
+                    ->label((string) __('egg-browser::strings.installed.check'))
+                    ->icon('tabler-cloud-search')
+                    ->color('gray')
+                    ->action(fn (TrackedEgg $record) => $this->checkOne($record->id)),
+                DeleteAction::make('delete')
+                    ->label((string) __('egg-browser::strings.installed.delete'))
+                    ->modalDescription((string) __('egg-browser::strings.installed.delete_confirm'))
+                    ->action(fn (TrackedEgg $record) => $this->deleteEgg($record->id)),
+            ]);
     }
 
     protected function getHeaderActions(): array

@@ -18,6 +18,7 @@ use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
 use Illuminate\Support\Facades\Response;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Url;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EggBrowserDetailPage extends Page
@@ -29,6 +30,9 @@ class EggBrowserDetailPage extends Page
     protected static ?string $slug = 'egg-browser/{key}';
 
     protected string $view = 'egg-browser::filament.egg-browser-detail';
+
+    #[Url(as: 'tab')]
+    public string $returnTab = 'browser';
 
     #[Locked]
     public string $key = '';
@@ -99,7 +103,9 @@ class EggBrowserDetailPage extends Page
         $actions = [
             Action::make('back')
                 ->label(trans('egg-browser::strings.browser.back'))
-                ->url(EggBrowserPage::getUrl())
+                ->url(fn (): string => EggBrowserPage::getUrl([
+                    'activeTab' => in_array($this->returnTab, ['browser', 'manage'], true) ? $this->returnTab : 'browser',
+                ]))
                 ->color('gray')
                 ->icon('tabler-arrow-left'),
             Action::make('github')

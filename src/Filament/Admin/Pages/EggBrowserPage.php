@@ -125,13 +125,9 @@ class EggBrowserPage extends Page implements HasTable
         }
 
         $this->activeTab = $tab;
-
-        if ($tab === 'manage') {
-            app(TrackedEggSyncService::class)->pruneOrphans();
-        }
     }
-
     public function table(Table $table): Table
+
     {
         return $table
             ->query(TrackedEgg::query()->with('egg'))
@@ -318,16 +314,16 @@ class EggBrowserPage extends Page implements HasTable
         $this->reloadCatalog();
     }
 
-    public function detailUrl(string $key): string
+    public function detailUrl(string $key, string $returnTab = 'browser'): string
     {
         $encoded = rtrim(strtr(base64_encode($key), '+/', '-_'), '=');
 
-        return EggBrowserDetailPage::getUrl(['key' => $encoded]);
+        return EggBrowserDetailPage::getUrl(['key' => $encoded, 'tab' => $returnTab]);
     }
 
     public function trackedDetailUrl(TrackedEgg $tracked): string
     {
-        return $this->detailUrl($tracked->sourceKey());
+        return $this->detailUrl($tracked->sourceKey(), 'manage');
     }
 
     /**
